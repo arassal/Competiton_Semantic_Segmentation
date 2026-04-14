@@ -2,38 +2,81 @@
 
 ROS 2 road-line and drivable-area semantic segmentation pipeline for the AVROS competition stack.
 
-This repository contains the first working implementation using a pretrained YOLOPv2 model. It publishes lane-line masks, drivable-area masks, overlay images, confidence masks, label metadata, and detections as ROS 2 topics.
+This repository contains a working ROS 2 bridge around a pretrained YOLOPv2 driving-perception model. The current implementation publishes lane-line masks, drivable-area masks, overlay images, a lane-confidence image, label metadata, and detection JSON as ROS 2 topics.
 
-## Current Status
+> Repository name intentionally follows the requested spelling: `Competiton_Semantic_Segmentation`.
 
-Working locally as of 2026-04-13:
+## Visual Pipeline
 
-- Pretrained YOLOPv2 weights run successfully.
-- ROS 2 Jazzy bridge publishes segmentation topics.
-- Proof images were exported from demo frames.
-- Large model weights are intentionally not committed to git.
+![ROS 2 semantic segmentation pipeline](docs/ros2_semantic_segmentation_pipeline.png)
 
-Proof contact sheet:
+Proof contact sheet from the current pretrained model:
 
 ![Road-line segmentation proof](proof/contact_sheet.jpg)
 
-## Published ROS 2 Topics
+## Verified ROS 2 Compatibility
+
+Verified locally on:
+
+- Ubuntu with ROS 2 Jazzy installed at `/opt/ros/jazzy`
+- `rclpy`
+- `sensor_msgs`
+- `std_msgs`
+- `cv_bridge`
+- `vision_msgs`
+- Python 3.12 runtime with PyTorch installed
+- pretrained YOLOPv2 TorchScript checkpoint
+
+Validation already run:
+
+```bash
+source /opt/ros/jazzy/setup.bash
+cd ros2_ws
+colcon build --packages-select seg_ros_bridge
+```
+
+Result:
+
+```text
+Finished <<< seg_ros_bridge
+Summary: 1 package finished
+```
+
+Python syntax validation:
+
+```bash
+/home/alexander/github/av-perception/.venv/bin/python -m py_compile \
+  scripts/export_roadline_proof.py \
+  scripts/generate_pipeline_diagram.py \
+  ros2_ws/src/seg_ros_bridge/seg_ros_bridge/seg_demo_node.py
+```
+
+## What This Publishes
 
 | Topic | Type | Notes |
 |---|---|---|
 | `/seg_ros/input_image` | `sensor_msgs/msg/Image` | Source image |
-| `/seg_ros/overlay_image` | `sensor_msgs/msg/Image` | Debug overlay |
-| `/seg_ros/drivable_mask` | `sensor_msgs/msg/Image` | `mono8`, drivable area |
-| `/seg_ros/lane_mask` | `sensor_msgs/msg/Image` | `mono8`, lane markings |
-| `/seg_ros/lane_confidence` | `sensor_msgs/msg/Image` | `mono8`, current confidence proxy |
-| `/seg_ros/label_info` | `vision_msgs/msg/LabelInfo` | Class metadata |
-| `/seg_ros/detections` | `std_msgs/msg/String` | JSON detections |
+| `/seg_ros/overlay_image` | `sensor_msgs/msg/Image` | Debug overlay with drivable area, lanes, and detections |
+| `/seg_ros/drivable_mask` | `sensor_msgs/msg/Image` | `mono8`, 0 background, 255 drivable area |
+| `/seg_ros/lane_mask` | `sensor_msgs/msg/Image` | `mono8`, 0 background, 255 lane marking |
+| `/seg_ros/lane_confidence` | `sensor_msgs/msg/Image` | `mono8`, current lane confidence proxy |
+| `/seg_ros/label_info` | `vision_msgs/msg/LabelInfo` | Transient-local class metadata |
+| `/seg_ros/detections` | `std_msgs/msg/String` | JSON detection boxes from YOLOPv2 |
+
+Current label map:
+
+| ID | Class |
+|---:|---|
+| 0 | `background` |
+| 1 | `drivable_area` |
+| 2 | `lane_marking` |
 
 ## Repository Layout
 
 ```text
 .
 ├── docs/
+│   ├── ros2_semantic_segmentation_pipeline.png
 │   └── semantic_roadlines_pipeline.md
 ├── models/
 │   └── README.md
@@ -44,30 +87,48 @@ Proof contact sheet:
 │   └── src/
 │       └── seg_ros_bridge/
 └── scripts/
-    └── export_roadline_proof.py
+    ├── export_roadline_proof.py
+    └── generate_pipeline_diagram.py
 ```
 
 ## Model Weights
 
-The expected pretrained checkpoint is:
+The pretrained model checkpoint is intentionally not committed because it is about 150 MB.
+
+Expected local path:
 
 ```text
 /home/alexander/Desktop/seg/data/weights/yolopv2.pt
 ```
 
-It is about 150 MB, so it is not committed. See [models/README.md](models/README.md) for download/source notes.
+Upstream release:
 
-## Build
+```text
+https://github.com/CAIC-AD/YOLOPv2/releases/download/V0.0.1/yolopv2.pt
+```
+
+See [models/README.md](models/README.md) for weight notes.
+
+## Build the ROS 2 Package
 
 ```bash
-cd ros2_ws
+cd /home/alexander/Desktop/Competiton_Semantic_Segmentation/ros2_ws
 source /opt/ros/jazzy/setup.bash
 colcon build --packages-select seg_ros_bridge
 ```
 
-## Run
+Optional environment check:
 
-This project currently uses the Python runtime where Torch is installed:
+```bash
+source /opt/ros/jazzy/setup.bash
+ros2 pkg prefix rclpy
+ros2 pkg prefix cv_bridge
+ros2 pkg prefix vision_msgs
+```
+
+## Run the Demo Publisher
+
+This command runs the pretrained model over demo images and publishes ROS 2 topics.
 
 ```bash
 source /opt/ros/jazzy/setup.bash
@@ -82,7 +143,11 @@ cd /home/alexander/Desktop/seg
   -p publish_rate_hz:=0.5
 ```
 
-Verify:
+The direct Python command is currently the most reliable runtime path because the Torch-enabled virtual environment is separate from the system ROS 2 Python installation.
+
+## Verify Runtime Topics
+
+Open another terminal:
 
 ```bash
 source /opt/ros/jazzy/setup.bash
@@ -91,9 +156,22 @@ ros2 topic echo /seg_ros/label_info --once
 ros2 topic echo /seg_ros/lane_mask --once
 ```
 
+Expected topic list:
+
+```text
+/seg_ros/detections
+/seg_ros/drivable_mask
+/seg_ros/input_image
+/seg_ros/label_info
+/seg_ros/lane_confidence
+/seg_ros/lane_mask
+/seg_ros/overlay_image
+```
+
 ## Export Proof Images
 
 ```bash
+cd /home/alexander/Desktop/Competiton_Semantic_Segmentation
 /home/alexander/github/av-perception/.venv/bin/python \
   scripts/export_roadline_proof.py \
   --project-root /home/alexander/Desktop/seg \
@@ -115,10 +193,18 @@ fs3.jpg: lane_pixels=2759 drivable_pixels=145975
 lane1.jpg: lane_pixels=15326 drivable_pixels=73835
 ```
 
+## ROS 2 Integration Notes
+
+- The current node is a reproducible image-folder publisher for proving the pretrained semantic segmentation pipeline.
+- The next runtime node should subscribe to `/camera/camera/color/image_raw` from the RealSense stack.
+- Lane markings should be treated as navigation cues, not physical obstacles.
+- Drivable-area masks can later feed a Nav2 semantic costmap layer.
+- Geometric obstacle layers should remain enabled for safety.
+
 ## Next Steps
 
 1. Add a live image subscriber for `/camera/camera/color/image_raw`.
-2. Keep the current image-folder publisher for reproducible demos.
-3. Add TensorRT/ONNX export path for Jetson.
+2. Keep the current image-folder publisher for repeatable demos.
+3. Add ONNX/TensorRT export for Jetson deployment.
 4. Compare YOLOPv2 against TwinLiteNetPlus on the same RealSense frames.
 5. Feed drivable-area masks into the Nav2 semantic costmap integration.
