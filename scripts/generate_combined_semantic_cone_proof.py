@@ -63,17 +63,24 @@ def draw_cones(image, result):
     return cones
 
 
-def make_contact_sheet(images, output_path):
-    if not images:
+def make_contact_sheet(rows, output_path):
+    if not rows:
         return
-    thumbs = [cv2.resize(img, (360, 270), interpolation=cv2.INTER_AREA) for img in images]
-    rows = []
-    for idx in range(0, len(thumbs), 3):
-        row = thumbs[idx:idx + 3]
-        while len(row) < 3:
-            row.append(np.zeros_like(thumbs[0]))
-        rows.append(np.hstack(row))
-    cv2.imwrite(str(output_path), np.vstack(rows))
+    rendered = []
+    for original, overlay, drivable, lane in rows:
+        w, h = 320, 240
+        original = cv2.resize(original, (w, h), interpolation=cv2.INTER_AREA)
+        overlay = cv2.resize(overlay, (w, h), interpolation=cv2.INTER_AREA)
+        drivable = cv2.cvtColor(
+            cv2.resize(drivable, (w, h), interpolation=cv2.INTER_NEAREST),
+            cv2.COLOR_GRAY2BGR,
+        )
+        lane = cv2.cvtColor(
+            cv2.resize(lane, (w, h), interpolation=cv2.INTER_NEAREST),
+            cv2.COLOR_GRAY2BGR,
+        )
+        rendered.append(np.hstack([original, overlay, drivable, lane]))
+    cv2.imwrite(str(output_path), np.vstack(rendered))
 
 
 def add_badge(image, text):
@@ -113,7 +120,7 @@ def main():
     if not images:
         raise RuntimeError(f'No images found in {args.input_dir}')
 
-    combined_images = []
+    contact_rows = []
     main_image = None
     with torch.no_grad():
         for image_path in images:
@@ -134,6 +141,16 @@ def main():
             _pred, seg, ll = seg_model(tensor)
             da_mask = driving_area_mask(seg)
             ll_mask = lane_line_mask(ll)
+            drivable_mask = cv2.resize(
+                (da_mask * 255).astype(np.uint8),
+                original_size,
+                interpolation=cv2.INTER_NEAREST,
+            )
+            lane_mask = cv2.resize(
+                (ll_mask * 255).astype(np.uint8),
+                original_size,
+                interpolation=cv2.INTER_NEAREST,
+            )
 
             semantic_overlay = seg_input.copy()
             show_seg_result(semantic_overlay, (da_mask, ll_mask), is_demo=True)
@@ -153,16 +170,18 @@ def main():
 
             output_path = output_dir / f'{image_path.stem}_semantic_cones.jpg'
             cv2.imwrite(str(output_path), semantic_overlay)
-            combined_images.append(semantic_overlay)
+            cv2.imwrite(str(output_dir / f'{image_path.stem}_drivable_mask.png'), drivable_mask)
+            cv2.imwrite(str(output_dir / f'{image_path.stem}_lane_mask.png'), lane_mask)
+            contact_rows.append((frame, semantic_overlay, drivable_mask, lane_mask))
             if image_path.stem == args.main_image_stem:
                 main_image = semantic_overlay
 
-    if combined_images:
+    if contact_rows:
         cv2.imwrite(
             str(output_dir / 'semantic_segmentation_plus_cones_road.jpg'),
-            main_image if main_image is not None else combined_images[0],
+            main_image if main_image is not None else contact_rows[0][1],
         )
-        make_contact_sheet(combined_images, output_dir / 'semantic_segmentation_plus_cones_contact_sheet.jpg')
+        make_contact_sheet(contact_rows, output_dir / 'semantic_segmentation_plus_cones_contact_sheet.jpg')
     print(f'Wrote combined proof images to {output_dir}')
 
 

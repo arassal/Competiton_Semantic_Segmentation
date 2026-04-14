@@ -1,8 +1,8 @@
 # Competiton Semantic Segmentation
 
-ROS 2 road-line and drivable-area semantic segmentation pipeline for the AVROS competition stack.
+ROS 2 road-line, drivable-area, and traffic-cone perception pipeline for the AVROS competition stack.
 
-This repository contains a working ROS 2 bridge around a pretrained YOLOPv2 driving-perception model. The current implementation publishes lane-line masks, drivable-area masks, overlay images, a lane-confidence image, label metadata, and detection JSON as ROS 2 topics.
+This repository contains a working ROS 2 bridge around a pretrained YOLOPv2 driving-perception model and a YOLOv8 traffic-cone/object detector. The current branch publishes lane-line masks, drivable-area masks, overlay images, traffic cone detections, and JSON detection topics.
 
 > Repository name intentionally follows the requested spelling: `Competiton_Semantic_Segmentation`.
 
@@ -10,15 +10,19 @@ This repository contains a working ROS 2 bridge around a pretrained YOLOPv2 driv
 
 ![ROS 2 semantic segmentation pipeline](docs/ros2_semantic_segmentation_pipeline.png)
 
-Proof contact sheet from the current pretrained model:
+Combined road segmentation and cone detection proof from the current pretrained models:
+
+![Road-line segmentation and cone detection proof](proof/combined/semantic_segmentation_plus_cones_contact_sheet.jpg)
+
+Original road/lane segmentation proof:
 
 ![Road-line segmentation proof](proof/contact_sheet.jpg)
 
-Competition object detection branch proof:
+Competition object detection pipeline:
 
 ![Competition object detection pipeline](docs/competition_objects_pipeline.png)
 
-Actual road traffic cone proof:
+Traffic cone detection proof:
 
 ![Actual road traffic cone detections](proof/traffic_cones/actual_road_cone_contact_sheet.jpg)
 
@@ -87,6 +91,12 @@ Current label map:
 | 1 | `drivable_area` |
 | 2 | `lane_marking` |
 
+The combined proof sheet uses the same layout as the original segmentation proof:
+
+```text
+original road frame | road/lane + cone overlay | drivable mask | lane mask
+```
+
 ## Competition Object Detection
 
 This branch adds a ROS 2 object detector for competition-relevant objects using an included Roboflow Logistics YOLOv8 checkpoint:
@@ -124,11 +134,11 @@ Published topics:
 Traffic cone proof:
 
 ```text
+proof/combined/semantic_segmentation_plus_cones_contact_sheet.jpg
+proof/combined/semantic_segmentation_plus_cones_road.jpg
 proof/traffic_cones/actual_road_cone_contact_sheet.jpg
 proof/traffic_cones/traffic_cone_eval_contact_sheet.jpg
 proof/traffic_cones/traffic_cone_eval.json
-proof/combined/semantic_segmentation_plus_cones_road.jpg
-proof/combined/semantic_segmentation_plus_cones_contact_sheet.jpg
 ```
 
 Traffic cone evaluation summary:
@@ -311,9 +321,10 @@ lane1.jpg: lane_pixels=15326 drivable_pixels=73835
 
 ## ROS 2 Integration Notes
 
-- The current node is a reproducible image-folder publisher for proving the pretrained semantic segmentation pipeline.
+- The current nodes are reproducible image-folder publishers for proving the pretrained road segmentation and cone/object detection pipeline.
 - The next runtime node should subscribe to `/camera/camera/color/image_raw` from the RealSense stack.
 - Lane markings should be treated as navigation cues, not physical obstacles.
+- Traffic cones and people should be treated as obstacle/safety cues.
 - Drivable-area masks can later feed a Nav2 semantic costmap layer.
 - Geometric obstacle layers should remain enabled for safety.
 

@@ -49,10 +49,10 @@ def main():
     img = Image.new('RGB', (width, height), (247, 249, 251))
     draw = ImageDraw.Draw(img)
 
-    draw.text((70, 44), 'ROS 2 Semantic Road-Line Segmentation Pipeline',
+    draw.text((70, 44), 'ROS 2 Road Segmentation + Cone Detection Pipeline',
               fill=(18, 24, 31), font=font(42, True))
     draw.text((72, 98),
-              'Verified local demo path: ROS 2 Jazzy + YOLOPv2 + sensor_msgs/Image + vision_msgs/LabelInfo',
+              'Verified local demo path: ROS 2 Jazzy + YOLOPv2 road/lane masks + YOLOv8 traffic cones',
               fill=(76, 88, 100), font=font(24))
 
     boxes = {
@@ -67,25 +67,25 @@ def main():
     rounded_box(draw, boxes['input'], (235, 245, 255), (124, 169, 214),
                 'Input Frames',
                 [
-                    '/home/.../data/demo/*.jpg',
+                    'road images with cones',
                     'next: /camera/.../image_raw',
-                    '1280 x 720 output frame',
+                    'RealSense RGB ready path',
                 ], (52, 138, 204))
 
     rounded_box(draw, boxes['model'], (237, 248, 241), (118, 181, 139),
-                'Pretrained Model',
+                'Segmentation Model',
                 [
                     'YOLOPv2 TorchScript',
                     'yolopv2.pt, external weight',
-                    'drivable + lane + detections',
+                    'drivable area + lane masks',
                 ], (47, 145, 86))
 
     rounded_box(draw, boxes['topics'], (255, 244, 232), (218, 158, 93),
-                'ROS 2 Bridge',
+                'Object Model',
                 [
-                    'seg_ros_bridge',
-                    'rclpy + cv_bridge',
-                    'Jazzy compatibility checked',
+                    'Roboflow Logistics YOLOv8',
+                    'included 6 MB checkpoint',
+                    'traffic cone + people + signs',
                 ], (219, 123, 43))
 
     rounded_box(draw, boxes['proof'], (250, 242, 255), (171, 129, 207),
@@ -93,16 +93,17 @@ def main():
                 [
                     '/seg_ros/lane_mask',
                     '/seg_ros/drivable_mask',
-                    '/seg_ros/label_info',
-                    '/seg_ros/overlay_image',
+                    '/seg_ros/competition_objects/*',
+                    'JSON object detections',
                 ], (132, 80, 177))
 
     rounded_box(draw, boxes['nav'], (236, 249, 249), (99, 178, 184),
                 'Verification',
                 [
                     'colcon build passes',
-                    'proof masks exported',
-                    'contact sheet in proof/',
+                    'combined proof exported',
+                    'cones: F1 0.8299',
+                    '72 road frames: 0 false cones',
                 ], (36, 147, 158))
 
     rounded_box(draw, boxes['future'], (248, 248, 238), (183, 177, 101),
@@ -110,7 +111,7 @@ def main():
                 [
                     'live RealSense input',
                     'Nav2 semantic costmap',
-                    'TensorRT/ONNX deployment',
+                    'cones as obstacle cues',
                 ], (155, 148, 50))
 
     arrow(draw, (470, 280), (700, 280))
@@ -126,7 +127,7 @@ def main():
     compatibility = [
         'ROS 2 messages: sensor_msgs/msg/Image, std_msgs/msg/String, vision_msgs/msg/LabelInfo',
         'Verified build command: source /opt/ros/jazzy/setup.bash && colcon build --packages-select seg_ros_bridge',
-        'Model checkpoint is not committed; see models/README.md for the upstream YOLOPv2 release URL.',
+        'YOLOPv2 segmentation checkpoint stays external; the small YOLOv8 cone/object checkpoint is included.',
     ]
     y = 948
     for line in compatibility:

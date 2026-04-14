@@ -63,6 +63,12 @@ proof/combined/semantic_segmentation_plus_cones_road.jpg
 proof/combined/semantic_segmentation_plus_cones_contact_sheet.jpg
 ```
 
+The combined contact sheet follows the same format as the original semantic segmentation proof:
+
+```text
+original road frame | road/lane + cone overlay | drivable mask | lane mask
+```
+
 Annotation-based evaluation contact sheet:
 
 ```text
