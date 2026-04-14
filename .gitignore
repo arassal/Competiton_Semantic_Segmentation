@@ -11,6 +11,7 @@ log/
 
 # Large model artifacts
 *.pt
+!models/roboflow_logistics_yolov8.pt
 *.pth
 *.onnx
 *.engine
