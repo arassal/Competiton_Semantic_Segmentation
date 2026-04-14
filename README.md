@@ -14,6 +14,14 @@ Proof contact sheet from the current pretrained model:
 
 ![Road-line segmentation proof](proof/contact_sheet.jpg)
 
+Competition object detection branch proof:
+
+![Competition object detection pipeline](docs/competition_objects_pipeline.png)
+
+Actual road traffic cone proof:
+
+![Actual road traffic cone detections](proof/traffic_cones/actual_road_cone_contact_sheet.jpg)
+
 ## Verified ROS 2 Compatibility
 
 Verified locally on:
@@ -26,6 +34,7 @@ Verified locally on:
 - `vision_msgs`
 - Python 3.12 runtime with PyTorch installed
 - pretrained YOLOPv2 TorchScript checkpoint
+- included Roboflow Logistics YOLOv8 checkpoint for competition objects
 
 Validation already run:
 
@@ -47,7 +56,10 @@ Python syntax validation:
 ```bash
 /home/alexander/github/av-perception/.venv/bin/python -m py_compile \
   scripts/export_roadline_proof.py \
+  scripts/evaluate_traffic_cones.py \
+  scripts/generate_competition_objects_diagram.py \
   scripts/generate_pipeline_diagram.py \
+  ros2_ws/src/seg_ros_bridge/seg_ros_bridge/competition_objects_node.py \
   ros2_ws/src/seg_ros_bridge/seg_ros_bridge/seg_demo_node.py
 ```
 
@@ -71,23 +83,89 @@ Current label map:
 | 1 | `drivable_area` |
 | 2 | `lane_marking` |
 
+## Competition Object Detection
+
+This branch adds a ROS 2 object detector for competition-relevant objects using an included Roboflow Logistics YOLOv8 checkpoint:
+
+```text
+models/roboflow_logistics_yolov8.pt
+```
+
+Useful model classes:
+
+```text
+person
+traffic cone
+traffic light
+road sign
+car
+truck
+van
+```
+
+ROS 2 node:
+
+```text
+competition_objects_node
+```
+
+Published topics:
+
+| Topic | Type | Notes |
+|---|---|---|
+| `/seg_ros/competition_objects/input_image` | `sensor_msgs/msg/Image` | Source image |
+| `/seg_ros/competition_objects/annotated_image` | `sensor_msgs/msg/Image` | Detection overlay |
+| `/seg_ros/competition_objects/detections` | `std_msgs/msg/String` | JSON object detections |
+
+Traffic cone proof:
+
+```text
+proof/traffic_cones/actual_road_cone_contact_sheet.jpg
+proof/traffic_cones/traffic_cone_eval_contact_sheet.jpg
+proof/traffic_cones/traffic_cone_eval.json
+```
+
+Traffic cone evaluation summary:
+
+```text
+annotation-based cone evaluation:
+  images: 48
+  ground-truth cones: 167
+  predicted cones: 168
+  precision: 0.8274
+  recall: 0.8323
+  F1: 0.8299
+
+actual road test:
+  non-cone road frames: 72
+  cone false positives: 0
+  selected road-cone scenes: 12
+  detected cones: 59
+```
+
 ## Repository Layout
 
 ```text
 .
 ├── docs/
+│   ├── competition_objects_pipeline.png
 │   ├── ros2_semantic_segmentation_pipeline.png
-│   └── semantic_roadlines_pipeline.md
+│   ├── semantic_roadlines_pipeline.md
+│   └── traffic_cones/
 ├── models/
-│   └── README.md
+│   ├── README.md
+│   └── roboflow_logistics_yolov8.pt
 ├── proof/
 │   ├── contact_sheet.jpg
+│   ├── traffic_cones/
 │   └── exported proof overlays and masks
 ├── ros2_ws/
 │   └── src/
 │       └── seg_ros_bridge/
 └── scripts/
+    ├── evaluate_traffic_cones.py
     ├── export_roadline_proof.py
+    ├── generate_competition_objects_diagram.py
     └── generate_pipeline_diagram.py
 ```
 
@@ -144,6 +222,37 @@ cd /home/alexander/Desktop/seg
 ```
 
 The direct Python command is currently the most reliable runtime path because the Torch-enabled virtual environment is separate from the system ROS 2 Python installation.
+
+## Run the Competition Object Detector
+
+Use the launch file:
+
+```bash
+source /opt/ros/jazzy/setup.bash
+cd /home/alexander/Desktop/Competiton_Semantic_Segmentation/ros2_ws
+ros2 launch seg_ros_bridge competition_objects.launch.py
+```
+
+Or run the node directly with the Torch/Ultralytics Python runtime:
+
+```bash
+source /opt/ros/jazzy/setup.bash
+/home/alexander/github/av-perception/.venv/bin/python \
+  /home/alexander/Desktop/Competiton_Semantic_Segmentation/ros2_ws/src/seg_ros_bridge/seg_ros_bridge/competition_objects_node.py \
+  --ros-args \
+  -p image_dir:=/home/alexander/Desktop/Competiton_Semantic_Segmentation/proof/traffic_cones/raw_road_inputs \
+  -p model_path:=/home/alexander/Desktop/Competiton_Semantic_Segmentation/models/roboflow_logistics_yolov8.pt \
+  -p device:=cpu \
+  -p confidence:=0.35
+```
+
+Verify object topics:
+
+```bash
+source /opt/ros/jazzy/setup.bash
+ros2 topic list | grep '^/seg_ros/competition_objects'
+ros2 topic echo /seg_ros/competition_objects/detections --once
+```
 
 ## Verify Runtime Topics
 

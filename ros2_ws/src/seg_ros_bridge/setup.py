@@ -1,3 +1,6 @@
+from glob import glob
+from os.path import join
+
 from setuptools import setup
 
 package_name = 'seg_ros_bridge'
@@ -9,7 +12,7 @@ setup(
     data_files=[
         ('share/ament_index/resource_index/packages', ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
-        ('share/' + package_name + '/launch', ['launch/seg_demo.launch.py']),
+        ('share/' + package_name + '/launch', glob(join('launch', '*.launch.py'))),
     ],
     install_requires=['setuptools'],
     zip_safe=True,
@@ -21,6 +24,7 @@ setup(
     entry_points={
         'console_scripts': [
             'seg_demo_node = seg_ros_bridge.seg_demo_node:main',
+            'competition_objects_node = seg_ros_bridge.competition_objects_node:main',
         ],
     },
 )
