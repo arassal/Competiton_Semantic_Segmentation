@@ -22,6 +22,10 @@ Actual road traffic cone proof:
 
 ![Actual road traffic cone detections](proof/traffic_cones/actual_road_cone_contact_sheet.jpg)
 
+Combined semantic segmentation plus traffic cone proof:
+
+![Road segmentation and cone detections together](proof/combined/semantic_segmentation_plus_cones_road.jpg)
+
 ## Verified ROS 2 Compatibility
 
 Verified locally on:
@@ -123,6 +127,8 @@ Traffic cone proof:
 proof/traffic_cones/actual_road_cone_contact_sheet.jpg
 proof/traffic_cones/traffic_cone_eval_contact_sheet.jpg
 proof/traffic_cones/traffic_cone_eval.json
+proof/combined/semantic_segmentation_plus_cones_road.jpg
+proof/combined/semantic_segmentation_plus_cones_contact_sheet.jpg
 ```
 
 Traffic cone evaluation summary:
@@ -156,6 +162,7 @@ actual road test:
 │   ├── README.md
 │   └── roboflow_logistics_yolov8.pt
 ├── proof/
+│   ├── combined/
 │   ├── contact_sheet.jpg
 │   ├── traffic_cones/
 │   └── exported proof overlays and masks

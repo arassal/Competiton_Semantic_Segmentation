@@ -56,6 +56,13 @@ Actual road cone detections:
 proof/traffic_cones/actual_road_cone_contact_sheet.jpg
 ```
 
+Combined semantic segmentation and traffic cone detections on the same road image:
+
+```text
+proof/combined/semantic_segmentation_plus_cones_road.jpg
+proof/combined/semantic_segmentation_plus_cones_contact_sheet.jpg
+```
+
 Annotation-based evaluation contact sheet:
 
 ```text
