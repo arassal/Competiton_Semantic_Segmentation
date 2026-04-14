@@ -25,7 +25,7 @@ def parse_args():
         help='YOLOv8 object model with traffic cone class.')
     parser.add_argument(
         '--input-dir',
-        default='proof/traffic_cones/raw_road_inputs',
+        default='proof/source_images',
         help='Road images containing traffic cones.')
     parser.add_argument(
         '--output-dir',
@@ -33,10 +33,11 @@ def parse_args():
         help='Output directory for combined proof images.')
     parser.add_argument('--device', default='cpu')
     parser.add_argument('--object-conf', type=float, default=0.35)
+    parser.add_argument('--object-imgsz', type=int, default=1280)
     parser.add_argument('--limit', type=int, default=6)
     parser.add_argument(
         '--main-image-stem',
-        default='7',
+        default='road_cars_cones_input',
         help='Input image stem to use for the main single-image proof.')
     return parser.parse_args()
 
@@ -55,10 +56,13 @@ def draw_cones(image, result):
         xyxy = [float(v) for v in box.xyxy[0]]
         conf = float(box.conf[0])
         x1, y1, x2, y2 = [int(v) for v in xyxy]
-        cv2.rectangle(image, (x1, y1), (x2, y2), (0, 140, 255), 3)
+        thickness = max(2, round(min(image.shape[:2]) / 220))
+        text_scale = max(0.55, min(image.shape[:2]) / 1000)
+        cv2.rectangle(image, (x1, y1), (x2, y2), (0, 140, 255), thickness)
         cv2.putText(
             image, f'cone {conf:.2f}', (x1, max(24, y1 - 8)),
-            cv2.FONT_HERSHEY_SIMPLEX, 0.75, (0, 140, 255), 2, cv2.LINE_AA)
+            cv2.FONT_HERSHEY_SIMPLEX, text_scale, (0, 140, 255),
+            thickness, cv2.LINE_AA)
         cones.append({'confidence': conf, 'xyxy': xyxy})
     return cones
 
@@ -160,7 +164,7 @@ def main():
             object_result = object_model.predict(
                 str(image_path),
                 conf=args.object_conf,
-                imgsz=640,
+                imgsz=args.object_imgsz,
                 verbose=False,
                 device=args.device,
             )[0]

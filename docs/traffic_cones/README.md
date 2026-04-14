@@ -61,12 +61,20 @@ Combined semantic segmentation and traffic cone detections on the same road imag
 ```text
 proof/combined/semantic_segmentation_plus_cones_road.jpg
 proof/combined/semantic_segmentation_plus_cones_contact_sheet.jpg
+proof/source_images/road_cars_cones_input.jpg
 ```
 
 The combined contact sheet follows the same format as the original semantic segmentation proof:
 
 ```text
 original road frame | road/lane + cone overlay | drivable mask | lane mask
+```
+
+The combined proof road image is a cropped Unsplash image:
+
+```text
+Photo by Limi change on Unsplash
+https://unsplash.com/photos/a-city-street-filled-with-traffic-and-construction-cones-5AFdk2U3htY
 ```
 
 Annotation-based evaluation contact sheet:

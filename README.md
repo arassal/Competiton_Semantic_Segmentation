@@ -10,7 +10,11 @@ This repository contains a working ROS 2 bridge around a pretrained YOLOPv2 driv
 
 ![ROS 2 semantic segmentation pipeline](docs/ros2_semantic_segmentation_pipeline.png)
 
-Combined road segmentation and cone detection proof from the current pretrained models:
+Combined road segmentation and cone detection proof from the current pretrained models. The columns match the original segmentation proof:
+
+```text
+input road image | semantic road/lane + cone overlay | drivable mask | lane mask
+```
 
 ![Road-line segmentation and cone detection proof](proof/combined/semantic_segmentation_plus_cones_contact_sheet.jpg)
 
@@ -136,6 +140,7 @@ Traffic cone proof:
 ```text
 proof/combined/semantic_segmentation_plus_cones_contact_sheet.jpg
 proof/combined/semantic_segmentation_plus_cones_road.jpg
+proof/source_images/road_cars_cones_input.jpg
 proof/traffic_cones/actual_road_cone_contact_sheet.jpg
 proof/traffic_cones/traffic_cone_eval_contact_sheet.jpg
 proof/traffic_cones/traffic_cone_eval.json
@@ -157,6 +162,13 @@ actual road test:
   cone false positives: 0
   selected road-cone scenes: 12
   detected cones: 59
+```
+
+The combined proof road image is from Unsplash:
+
+```text
+Photo by Limi change on Unsplash
+https://unsplash.com/photos/a-city-street-filled-with-traffic-and-construction-cones-5AFdk2U3htY
 ```
 
 ## Repository Layout
