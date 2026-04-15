@@ -1,44 +1,37 @@
 # Model Weights
 
-The current semantic segmentation model is YOLOPv2.
+This directory documents the model weights used by the ROS 2 perception proof.
 
-Expected local checkpoint:
-
-```text
-/home/alexander/Desktop/seg/data/weights/yolopv2.pt
-```
-
-Source project:
-
-```text
-https://github.com/CAIC-AD/YOLOPv2
-```
-
-Source release URL:
-
-```text
-https://github.com/CAIC-AD/YOLOPv2/releases/download/V0.0.1/yolopv2.pt
-```
-
-The checkpoint is approximately 150 MB and is intentionally excluded from this repository. Use Git LFS or an external release artifact if the weight needs to be versioned with the project later.
-
-## Included Competition Object Model
-
-This repository includes one small YOLOv8 object-detection checkpoint:
+## Included Weight
 
 ```text
 models/roboflow_logistics_yolov8.pt
 ```
 
-It is used by `competition_objects_node` for traffic cones and related competition objects.
+Use:
+
+- traffic cone detection
+- person detection
+- traffic light detection
+- road sign detection
+- car, truck, and van detection
 
 Source:
 
 ```text
+https://universe.roboflow.com/wen-8qxpo/logistics-sz9jr-yvvjw
 https://blog.roboflow.com/logistics-object-detection-model/
 ```
 
-The model includes these useful classes:
+Dataset and training summary:
+
+- Roboflow Logistics dataset
+- 99,238 images
+- 20 object classes
+- reported 76% mAP
+- part of the dataset was auto-labeled with Autodistill DETIC according to Roboflow
+
+Relevant class names:
 
 ```text
 person
@@ -50,4 +43,47 @@ truck
 van
 ```
 
-It is committed because it is about 6 MB, unlike the 150 MB YOLOPv2 segmentation checkpoint.
+This checkpoint is committed because it is small enough for normal Git usage.
+
+## External Weight
+
+```text
+/home/alexander/Desktop/seg/data/weights/yolopv2.pt
+```
+
+Use:
+
+- drivable-area segmentation
+- lane-line segmentation
+- upstream YOLOPv2 driving-scene detections
+
+Source project:
+
+```text
+https://github.com/CAIC-AD/YOLOPv2
+```
+
+Source release:
+
+```text
+https://github.com/CAIC-AD/YOLOPv2/releases/download/V0.0.1/yolopv2.pt
+```
+
+Training summary:
+
+- upstream pretrained YOLOPv2 checkpoint
+- multitask driving perception model
+- documented around BDD100K-style driving perception tasks
+- not trained or modified in this repository
+
+This checkpoint is roughly 150 MB and is intentionally excluded from this repository. If it needs to be versioned later, use Git LFS or attach it to a GitHub Release instead of committing it as a normal blob.
+
+## Training Ownership
+
+The current repository owns the ROS 2 wrapper, proof generation, evaluation scripts, and integration documentation. It does not yet own a fine-tuned road segmentation checkpoint.
+
+See:
+
+```text
+docs/datasets_and_training.md
+```
