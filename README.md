@@ -116,6 +116,7 @@ Detailed model and dataset notes:
 
 - [Dataset and Training Notes](docs/datasets_and_training.md)
 - [Technical Architecture](docs/technical_architecture.md)
+- [ZED X Validation Workflow](docs/zed_validation_workflow.md)
 - [Model Weights](models/README.md)
 - [Traffic Cone Detection Notes](docs/traffic_cones/README.md)
 
@@ -126,6 +127,7 @@ Detailed model and dataset notes:
 | `seg_demo_node` | static road images | road/lane masks, overlay, label info, YOLOPv2 detections |
 | `competition_objects_node` | static object-demo images | annotated image, object detection JSON |
 | `live_perception_node` | ROS image topic | live road/lane masks, combined overlay, label info, object detections, timing |
+| `zed_image_recorder_node` | ZED X ROS image topic | saved validation frames and `manifest.json` |
 
 ## ROS Topics
 
@@ -286,6 +288,29 @@ Combined semantic road + cone proof:
   scripts/generate_combined_semantic_cone_proof.py
 ```
 
+Record ZED X validation frames:
+
+```bash
+source /opt/ros/jazzy/setup.bash
+source /home/alexander/Desktop/Competiton_Semantic_Segmentation/ros2_ws/install/setup.bash
+ros2 launch seg_ros_bridge zed_image_recorder.launch.py \
+  image_topic:=/zed/zed_node/rgb/color/rect/image \
+  output_dir:=/home/alexander/Desktop/Competiton_Semantic_Segmentation/validation/zed_frames \
+  max_frames:=200 \
+  save_every_n:=5
+```
+
+Benchmark current models on an image folder:
+
+```bash
+/home/alexander/github/av-perception/.venv/bin/python \
+  scripts/benchmark_live_perception.py \
+  --image-dir validation/zed_frames \
+  --output-json validation/benchmark_report.json \
+  --device cpu \
+  --limit 200
+```
+
 ## Project Layout
 
 ```text
@@ -294,6 +319,7 @@ docs/
   semantic_roadlines_pipeline.md
   technical_architecture.md
   traffic_cones/README.md
+  zed_validation_workflow.md
 models/
   roboflow_logistics_yolov8.pt
 proof/
@@ -302,6 +328,8 @@ proof/
   traffic_cones/
 ros2_ws/src/seg_ros_bridge/
 scripts/
+  benchmark_live_perception.py
+  extract_validation_frames.py
 ```
 
 ## Limitations

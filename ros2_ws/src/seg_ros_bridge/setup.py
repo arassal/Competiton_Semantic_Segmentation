@@ -26,6 +26,7 @@ setup(
             'seg_demo_node = seg_ros_bridge.seg_demo_node:main',
             'competition_objects_node = seg_ros_bridge.competition_objects_node:main',
             'live_perception_node = seg_ros_bridge.live_perception_node:main',
+            'zed_image_recorder_node = seg_ros_bridge.zed_image_recorder_node:main',
         ],
     },
 )
