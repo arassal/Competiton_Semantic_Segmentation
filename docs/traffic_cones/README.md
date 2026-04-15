@@ -1,6 +1,6 @@
 # Traffic Cone Detection
 
-This branch adds traffic-cone-capable object detection to the ROS 2 perception proof.
+This document records the traffic-cone object-detection path used by the ROS 2 perception proof.
 
 ## Model
 
@@ -13,12 +13,23 @@ models/roboflow_logistics_yolov8.pt
 Source:
 
 ```text
+https://universe.roboflow.com/wen-8qxpo/logistics-sz9jr-yvvjw
 https://blog.roboflow.com/logistics-object-detection-model/
 ```
 
-The model is useful here because it has a native `traffic cone` class. COCO YOLO models do not.
+The model is useful here because it includes a native `traffic cone` class. Standard COCO YOLO checkpoints usually do not.
 
-Relevant classes for the competition stack:
+Roboflow dataset summary:
+
+```text
+dataset: Roboflow Logistics
+images: 99,238
+classes: 20
+reported metric: 76% mAP
+notable labeling note: part of dataset auto-labeled with Autodistill DETIC
+```
+
+Relevant classes for this repository:
 
 ```text
 person
@@ -46,7 +57,7 @@ Published topics:
 /seg_ros/competition_objects/detections
 ```
 
-The detection topic is JSON in `std_msgs/msg/String` for now. That keeps the proof simple and easy to inspect.
+The detection topic is JSON in `std_msgs/msg/String`. That keeps the proof easy to inspect while the final message contract is still being decided.
 
 ## Proof Images
 
@@ -64,7 +75,7 @@ proof/combined/semantic_segmentation_plus_cones_contact_sheet.jpg
 proof/source_images/road_cars_cones_input.jpg
 ```
 
-The combined contact sheet follows the same format as the original semantic segmentation proof:
+The combined contact sheet follows this format:
 
 ```text
 original road frame | road/lane + cone overlay | drivable mask | lane mask
@@ -127,8 +138,20 @@ traffic cones detected: 59
   --iou 0.50
 ```
 
-The dataset path is local because the full cone dataset is not committed. Only proof images and JSON summaries are included in this branch.
+The dataset path is local because the full cone dataset is not committed. Only proof images and JSON summaries are included in the repository.
 
 ## Reliability Notes
 
-This is reliable enough for the next ROS 2 integration step, but it still needs testing on the actual robot camera. The main risks are small distant cones, motion blur, low light, unusual cone colors, and partial occlusion.
+This detector is reliable enough for the next ROS 2 integration step, but it is not yet a final safety model.
+
+Main risks:
+
+- small distant cones
+- motion blur
+- low light
+- unusual cone colors
+- partial occlusion
+- cones very close to the robot camera
+- false confidence when a cone is not projected into the robot frame
+
+Before driving decisions, cone detections should be fused with depth, lidar, or another geometric obstacle source.

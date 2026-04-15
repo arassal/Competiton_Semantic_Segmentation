@@ -10,13 +10,20 @@ Goal: accurate pretrained road-line and drivable-road segmentation in ROS 2, the
 
 Use a pretrained lane-line segmentation model first, wrap it in our own ROS 2 package, and keep the model replaceable behind a stable topic interface.
 
+Current source-of-truth documentation for model provenance, datasets, and training ownership:
+
+```text
+docs/datasets_and_training.md
+models/README.md
+```
+
 Primary candidate for the current working implementation:
 
 - **YOLOPv2**
 - Local project: `/home/alexander/Desktop/seg`
 - Local weights: `/home/alexander/Desktop/seg/data/weights/yolopv2.pt`
-- ROS 2 bridge: `/home/alexander/Desktop/seg/ros2_ws/src/seg_ros_bridge`
-- Proof outputs: `/home/alexander/Desktop/roadline_demo_proof`
+- ROS 2 bridge: `/home/alexander/Desktop/Competiton_Semantic_Segmentation/ros2_ws/src/seg_ros_bridge`
+- Proof outputs: `/home/alexander/Desktop/Competiton_Semantic_Segmentation/proof`
 - Why this is the current implementation: pretrained weights are already present locally, the model runs successfully, and the ROS 2 bridge publishes lane masks, drivable masks, overlays, confidence, label metadata, and detections.
 
 Primary candidate for the next model comparison:
@@ -364,7 +371,7 @@ Connection between the two:
 Build the local ROS 2 bridge:
 
 ```bash
-cd /home/alexander/Desktop/seg/ros2_ws
+cd /home/alexander/Desktop/Competiton_Semantic_Segmentation/ros2_ws
 source /opt/ros/jazzy/setup.bash
 colcon build --packages-select seg_ros_bridge
 ```
@@ -375,7 +382,7 @@ Run the pretrained YOLOPv2 ROS 2 publisher:
 source /opt/ros/jazzy/setup.bash
 cd /home/alexander/Desktop/seg
 /home/alexander/github/av-perception/.venv/bin/python \
-  /home/alexander/Desktop/seg/ros2_ws/src/seg_ros_bridge/seg_ros_bridge/seg_demo_node.py \
+  /home/alexander/Desktop/Competiton_Semantic_Segmentation/ros2_ws/src/seg_ros_bridge/seg_ros_bridge/seg_demo_node.py \
   --ros-args -p device:=cpu -p publish_rate_hz:=0.5
 ```
 
@@ -392,7 +399,7 @@ Export saved proof images:
 
 ```bash
 /home/alexander/github/av-perception/.venv/bin/python \
-  /home/alexander/Desktop/seg/export_roadline_proof.py \
+  /home/alexander/Desktop/Competiton_Semantic_Segmentation/scripts/export_roadline_proof.py \
   --limit 6 --device cpu
 ```
 
@@ -436,3 +443,10 @@ Export saved proof images:
   - `fs2.jpg`: 20,362 lane pixels, 168,026 drivable pixels
   - `fs3.jpg`: 2,759 lane pixels, 145,975 drivable pixels
   - `lane1.jpg`: 15,326 lane pixels, 73,835 drivable pixels
+
+### 2026-04-15
+
+- Added professional dataset and training documentation to `docs/datasets_and_training.md`.
+- Clarified that YOLOPv2 and Roboflow Logistics are upstream pretrained checkpoints.
+- Documented local validation data separately from upstream training data.
+- Updated README and model docs so the repository does not overclaim custom training or production safety.
