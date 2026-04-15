@@ -375,6 +375,9 @@ Road/lane validation currently checks:
 - visual overlay quality on static road images
 - ROS topic publication and message encodings
 - live node startup and ROS image subscription
+- header preservation on live derived image outputs
+
+Road/lane validation does not yet report IoU or mIoU because the project does not yet have labeled ZED X road/lane ground-truth masks.
 
 Traffic-cone validation currently checks:
 
@@ -396,6 +399,19 @@ false negatives: 28
 precision: 0.8274
 recall: 0.8323
 F1: 0.8299
+```
+
+Latest live subscriber smoke test:
+
+```text
+input: proof/source_images/road_cars_cones_input.jpg published as ROS Image
+topic: /codex/test_image
+output: /seg_ros/live/detections
+segmentation detections: 2
+traffic cones detected: 8
+people detected: 2
+cars detected: 1
+CPU timing: about 630 ms/frame
 ```
 
 ## Live Robot Integration Requirements

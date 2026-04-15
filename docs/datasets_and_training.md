@@ -149,6 +149,21 @@ recall: 0.8323
 F1: 0.8299
 ```
 
+Latest live subscriber smoke test:
+
+```text
+input: proof/source_images/road_cars_cones_input.jpg published as ROS Image
+topic: /codex/test_image
+output: /seg_ros/live/detections
+segmentation detections: 2
+traffic cones detected: 8
+people detected: 2
+cars detected: 1
+CPU timing: about 630 ms/frame
+```
+
+Road/lane segmentation does not yet have project-owned ZED X ground-truth masks, so road/lane IoU and mIoU are not reported yet.
+
 Road-scene smoke test:
 
 ```text

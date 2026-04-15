@@ -1,48 +1,52 @@
 # Competiton Semantic Segmentation
 
-ROS 2 Jazzy perception package for semantic road segmentation, lane-line masks, and traffic-cone/object detection.
+ROS 2 Jazzy perception stack for semantic road segmentation, lane-line masks, and traffic-cone/object detection.
 
-The repository currently wraps pretrained perception models into a ROS 2-compatible workflow and includes proof images, evaluation scripts, launch files, and documentation needed to reproduce the static-image validation. The long-term goal is a competition-ready perception module that can run from a live robot camera and feed navigation/safety logic.
+This repository wraps pretrained perception models in a project-owned ROS 2 package. It supports repeatable static-image proofs and a live ZED X image subscriber. The current implementation is accurate enough for prototype perception testing, but it is not yet a certified driving safety system.
 
 > Repository name intentionally follows the requested spelling: `Competiton_Semantic_Segmentation`.
 
-## System Summary
+## Status
 
-| Capability | Current status |
+| Area | Current state |
 |---|---|
-| Drivable-road segmentation | Working from pretrained YOLOPv2 checkpoint |
+| Road/drivable segmentation | Working from pretrained YOLOPv2 checkpoint |
 | Lane-line segmentation | Working from pretrained YOLOPv2 checkpoint |
 | Traffic-cone detection | Working from included Roboflow Logistics YOLOv8 checkpoint |
-| People / road-sign / vehicle detections | Supported by the included object model |
-| ROS 2 Jazzy package | Builds locally with `colcon` |
-| Live ZED X camera input | Implemented as a ROS image subscriber; hardware validation still needed |
-| Nav2 semantic costmap integration | Planned; not claimed as complete |
+| People / vehicle / sign detection | Supported by the included object detector |
+| Live camera path | Implemented for ZED X ROS 2 image topics |
+| ROS 2 package | Builds with `colcon` on ROS 2 Jazzy |
+| Nav2 semantic costmap | Planned, not claimed complete |
+| Local custom training | Not done yet; dataset plan documented |
 
-## Technical Stack
-
-| Area | Implementation |
-|---|---|
-| ROS package | `seg_ros_bridge`, Python `ament_python` |
-| ROS distribution | ROS 2 Jazzy |
-| Image bridge | `cv_bridge`, OpenCV BGR frames |
-| Road/lane backend | YOLOPv2 TorchScript checkpoint loaded with PyTorch |
-| Object backend | Ultralytics YOLOv8 checkpoint trained on Roboflow Logistics data |
-| Road/lane outputs | `sensor_msgs/msg/Image` masks and overlay, `vision_msgs/msg/LabelInfo`, JSON detections |
-| Object outputs | annotated `sensor_msgs/msg/Image`, JSON detections |
-| Current runtime modes | deterministic static-image publishers and live ROS image subscriber |
-| Live input topic | ZED ROS 2 `/zed/zed_node/rgb/color/rect/image` by default |
-
-## Pipeline
-
-One perception path: road image in, semantic road/lane masks and cone detections out.
+## System Architecture
 
 ![ROS 2 road segmentation and cone detection pipeline](docs/ros2_semantic_segmentation_pipeline.png)
 
-## Proof Gallery
+```text
+ZED X / image folder
+  -> ROS 2 image input
+  -> YOLOPv2 road + lane segmentation
+  -> Roboflow Logistics YOLOv8 object detection
+  -> masks, overlays, label metadata, detections, timing
+  -> future Nav2 / obstacle-fusion integration
+```
 
-**Combined road + cone proof**
+| Component | Implementation |
+|---|---|
+| ROS package | `seg_ros_bridge`, Python `ament_python` |
+| Live input | `/zed/zed_node/rgb/color/rect/image` by default |
+| Image conversion | `cv_bridge`, OpenCV BGR frames |
+| Road/lane model | YOLOPv2 TorchScript checkpoint loaded with PyTorch |
+| Object model | Roboflow Logistics YOLOv8 checkpoint loaded with Ultralytics |
+| Mask outputs | `sensor_msgs/msg/Image`, `mono8` |
+| Debug overlays | `sensor_msgs/msg/Image`, `bgr8` |
+| Label metadata | `vision_msgs/msg/LabelInfo` |
+| Detections | JSON in `std_msgs/msg/String` |
 
-The combined contact sheet uses one road image with both road surface and traffic cones:
+## Proof
+
+**Combined road segmentation and traffic-cone detection**
 
 ```text
 input road image | semantic road/lane + cone overlay | drivable mask | lane mask
@@ -62,141 +66,93 @@ input road image | semantic road/lane + cone overlay | drivable mask | lane mask
 
 ![Actual road cone detections](proof/traffic_cones/actual_road_cone_contact_sheet.jpg)
 
-## Models And Datasets
+## Measured Results
 
-This project uses pretrained upstream models. The ROS 2 integration, proof scripts, evaluation commands, and documentation are project-owned. The current repository does not claim that the road segmentation model or object detector were trained from scratch here.
+Traffic-cone detector, measured on the local labeled cone dataset:
 
-| Model | Task | Dataset / training source | Stored in repo? |
+```text
+images tested: 48
+ground-truth cones: 167
+predicted cones: 168
+precision: 0.8274
+recall: 0.8323
+F1: 0.8299
+confidence threshold: 0.25
+IoU match threshold: 0.50
+```
+
+Live ROS subscriber smoke test, using the saved combined road/cone proof image published as a ROS image:
+
+```text
+traffic cones detected: 8
+people detected: 2
+cars detected: 1
+segmentation detections: 2
+CPU inference time: about 630 ms/frame
+```
+
+Road/lane segmentation is functionally validated by non-empty masks and proof images. Numeric road/lane IoU is not reported yet because project-owned ground-truth road/lane masks for the ZED X camera have not been labeled.
+
+## Models
+
+| Model | Task | Dataset / source | In repo? |
 |---|---|---|---|
-| YOLOPv2 | object detection, drivable-area segmentation, lane-line segmentation | Upstream YOLOPv2 training, documented around BDD100K driving perception tasks | No, external checkpoint |
-| Roboflow Logistics YOLOv8 | traffic cones, people, traffic lights, road signs, vehicles, logistics objects | Roboflow Logistics dataset: 99,238 images, 20 classes, reported 76% mAP | Yes, small checkpoint |
+| YOLOPv2 | drivable area, lane-line masks, driving-scene detections | Upstream YOLOPv2 checkpoint, documented around BDD100K-style driving perception | No, external checkpoint |
+| Roboflow Logistics YOLOv8 | traffic cones, people, signs, vehicles, logistics objects | Roboflow Logistics dataset, 99,238 images, 20 classes, reported 76% mAP | Yes |
 
-Detailed dataset, model provenance, training status, and future fine-tuning plan:
+Included checkpoint:
+
+```text
+models/roboflow_logistics_yolov8.pt
+```
+
+Expected external YOLOPv2 checkpoint:
+
+```text
+/home/alexander/Desktop/seg/data/weights/yolopv2.pt
+```
+
+Detailed model and dataset notes:
 
 - [Dataset and Training Notes](docs/datasets_and_training.md)
 - [Technical Architecture](docs/technical_architecture.md)
 - [Model Weights](models/README.md)
 - [Traffic Cone Detection Notes](docs/traffic_cones/README.md)
 
-## Runtime Architecture
+## ROS Nodes
 
-Current implementation contains two ROS nodes.
+| Node | Input | Output |
+|---|---|---|
+| `seg_demo_node` | static road images | road/lane masks, overlay, label info, YOLOPv2 detections |
+| `competition_objects_node` | static object-demo images | annotated image, object detection JSON |
+| `live_perception_node` | ROS image topic | live road/lane masks, combined overlay, label info, object detections, timing |
 
-| Node | Backend | Input source | Main outputs |
-|---|---|---|---|
-| `seg_demo_node` | YOLOPv2 | image directory | drivable mask, lane mask, lane confidence, overlay, label map, detection JSON |
-| `competition_objects_node` | Roboflow Logistics YOLOv8 | image directory | annotated image, object detection JSON |
-| `live_perception_node` | YOLOPv2 + Roboflow Logistics YOLOv8 | ROS `sensor_msgs/msg/Image` topic | live drivable mask, lane mask, combined overlay, label map, timing JSON, detection JSON |
-
-Road/lane inference path:
-
-```text
-OpenCV image
-  -> resize to 1280x720
-  -> YOLOPv2 letterbox to 640
-  -> RGB tensor normalization
-  -> TorchScript forward pass
-  -> drivable-area mask
-  -> lane-line mask
-  -> ROS image publications
-```
-
-Object detection path:
-
-```text
-OpenCV image
-  -> Ultralytics YOLOv8 inference at imgsz=640
-  -> confidence filtering
-  -> class allow-list
-  -> annotated image
-  -> JSON detection publication
-```
-
-Detection bounding boxes use image-pixel `xyxy` format:
-
-```text
-[x_min, y_min, x_max, y_max]
-```
-
-For navigation, these 2D detections still need camera calibration and depth/lidar association before they can become physical obstacles.
-
-## What Works Now
-
-Road/lane semantic segmentation:
-
-- publishes input image, overlay image, drivable-area mask, lane-line mask, lane confidence, detections, and label metadata
-- uses the local YOLOPv2 checkpoint at `/home/alexander/Desktop/seg/data/weights/yolopv2.pt`
-- proof images show non-empty drivable and lane masks on road scenes
-
-Competition object detection:
-
-- detects traffic cones using `models/roboflow_logistics_yolov8.pt`
-- can also detect people, traffic lights, road signs, cars, trucks, and vans from the same checkpoint
-- publishes annotated images and JSON detections
-- includes traffic-cone evaluation results and proof images
-
-Traffic cone reliability checks currently recorded:
-
-```text
-annotation evaluation:
-  images: 48
-  ground-truth cones: 167
-  predicted cones: 168
-  precision: 0.8274
-  recall: 0.8323
-  F1: 0.8299
-
-road smoke test:
-  non-cone road frames: 72
-  cone false positives: 0
-  road-cone scenes: 12
-  detected cones: 59
-```
-
-## ROS 2 Topics
-
-Road/lane segmentation topics:
-
-| Topic | Type | Encoding / payload | Purpose |
-|---|---|---|---|
-| `/seg_ros/input_image` | `sensor_msgs/msg/Image` | `bgr8` | Source frame used for inference |
-| `/seg_ros/overlay_image` | `sensor_msgs/msg/Image` | `bgr8` | Debug image with segmentation overlay |
-| `/seg_ros/drivable_mask` | `sensor_msgs/msg/Image` | `mono8`, 0 or 255 | Drivable-area mask |
-| `/seg_ros/lane_mask` | `sensor_msgs/msg/Image` | `mono8`, 0 or 255 | Lane-line mask |
-| `/seg_ros/lane_confidence` | `sensor_msgs/msg/Image` | `mono8`, 0 or 255 | Current lane confidence proxy |
-| `/seg_ros/label_info` | `vision_msgs/msg/LabelInfo` | transient-local class map | Semantic class labels |
-| `/seg_ros/detections` | `std_msgs/msg/String` | JSON | YOLOPv2 detection boxes |
-
-Competition object topics:
-
-| Topic | Type | Encoding / payload | Purpose |
-|---|---|---|---|
-| `/seg_ros/competition_objects/input_image` | `sensor_msgs/msg/Image` | `bgr8` | Source frame used for object inference |
-| `/seg_ros/competition_objects/annotated_image` | `sensor_msgs/msg/Image` | `bgr8` | Debug image with object boxes |
-| `/seg_ros/competition_objects/detections` | `std_msgs/msg/String` | JSON | Filtered competition object detections |
+## ROS Topics
 
 Live perception topics:
 
-| Topic | Type | Encoding / payload | Purpose |
-|---|---|---|---|
-| `/seg_ros/live/input_image` | `sensor_msgs/msg/Image` | `bgr8` | Republished source camera frame |
-| `/seg_ros/live/overlay_image` | `sensor_msgs/msg/Image` | `bgr8` | Road/lane overlay plus object boxes |
-| `/seg_ros/live/drivable_mask` | `sensor_msgs/msg/Image` | `mono8`, 0 or 255 | Live drivable-area mask |
-| `/seg_ros/live/lane_mask` | `sensor_msgs/msg/Image` | `mono8`, 0 or 255 | Live lane-line mask |
-| `/seg_ros/live/lane_confidence` | `sensor_msgs/msg/Image` | `mono8`, 0 or 255 | Current lane confidence proxy |
-| `/seg_ros/live/label_info` | `vision_msgs/msg/LabelInfo` | transient-local class map | Semantic class labels |
-| `/seg_ros/live/detections` | `std_msgs/msg/String` | JSON | Combined segmentation/object detections |
-| `/seg_ros/live/timing` | `std_msgs/msg/String` | JSON | Per-frame runtime timing |
+| Topic | Type | Payload |
+|---|---|---|
+| `/seg_ros/live/input_image` | `sensor_msgs/msg/Image` | `bgr8` source frame |
+| `/seg_ros/live/overlay_image` | `sensor_msgs/msg/Image` | `bgr8` road/lane overlay plus object boxes |
+| `/seg_ros/live/drivable_mask` | `sensor_msgs/msg/Image` | `mono8`, 0 background, 255 drivable |
+| `/seg_ros/live/lane_mask` | `sensor_msgs/msg/Image` | `mono8`, 0 background, 255 lane marking |
+| `/seg_ros/live/lane_confidence` | `sensor_msgs/msg/Image` | `mono8` confidence proxy |
+| `/seg_ros/live/label_info` | `vision_msgs/msg/LabelInfo` | transient-local class map |
+| `/seg_ros/live/detections` | `std_msgs/msg/String` | combined JSON detections |
+| `/seg_ros/live/timing` | `std_msgs/msg/String` | runtime timing JSON |
 
-Semantic label map:
+Static proof topics remain available under `/seg_ros/*` and `/seg_ros/competition_objects/*`.
 
-| Class ID | Class name |
+Semantic class map:
+
+| ID | Class |
 |---:|---|
 | 0 | `background` |
 | 1 | `drivable_area` |
 | 2 | `lane_marking` |
 
-Competition object allow-list:
+Object allow-list:
 
 ```text
 person
@@ -208,41 +164,40 @@ truck
 van
 ```
 
-Example object detection JSON:
+Example live detection payload:
 
 ```json
 {
-  "image": "frame_name.jpg",
-  "count": 1,
-  "detections": [
-    {
-      "type": "traffic_cone",
-      "class_name": "traffic cone",
-      "confidence": 0.87,
-      "xyxy": [248.0, 315.0, 302.0, 417.0]
-    }
-  ]
+  "header": {
+    "stamp": {
+      "sec": 0,
+      "nanosec": 0
+    },
+    "frame_id": "camera_color_optical_frame"
+  },
+  "segmentation_detections": {
+    "count": 0,
+    "detections": []
+  },
+  "competition_objects": {
+    "count": 1,
+    "detections": [
+      {
+        "type": "traffic_cone",
+        "class_name": "traffic cone",
+        "confidence": 0.87,
+        "xyxy": [248.0, 315.0, 302.0, 417.0]
+      }
+    ]
+  },
+  "timing_ms": 215.4
 }
 ```
 
-## Repository Layout
+Bounding boxes use image-pixel `xyxy` format:
 
 ```text
-docs/
-  datasets_and_training.md
-  ros2_semantic_segmentation_pipeline.png
-  semantic_roadlines_pipeline.md
-  technical_architecture.md
-  traffic_cones/README.md
-models/
-  README.md
-  roboflow_logistics_yolov8.pt
-proof/
-  combined/
-  source_images/
-  traffic_cones/
-ros2_ws/src/seg_ros_bridge/
-scripts/
+[x_min, y_min, x_max, y_max]
 ```
 
 ## Build
@@ -251,67 +206,35 @@ scripts/
 cd /home/alexander/Desktop/Competiton_Semantic_Segmentation/ros2_ws
 source /opt/ros/jazzy/setup.bash
 colcon build --packages-select seg_ros_bridge
+source install/setup.bash
 ```
-
-Verified locally:
-
-```text
-ROS 2 Jazzy
-rclpy
-sensor_msgs
-std_msgs
-cv_bridge
-vision_msgs
-PyTorch / Ultralytics runtime
-```
-
-## Launch Parameters
-
-Road/lane segmentation node:
-
-| Parameter | Default | Meaning |
-|---|---|---|
-| `project_root` | `/home/alexander/Desktop/seg` | YOLOPv2 source/utilities path |
-| `image_dir` | `${project_root}/data/demo` | static demo image folder |
-| `weights_path` | `${project_root}/data/weights/yolopv2.pt` | YOLOPv2 checkpoint |
-| `device` | `cpu` | PyTorch device |
-| `img_size` | `640` | model letterbox size |
-| `conf_thres` | `0.30` | detection confidence threshold |
-| `iou_thres` | `0.45` | NMS IoU threshold |
-| `publish_rate_hz` | `1.0` | output rate for static images |
-
-Competition object node:
-
-| Parameter | Default | Meaning |
-|---|---|---|
-| `image_dir` | `proof/traffic_cones/raw_road_inputs` | static object-demo image folder |
-| `model_path` | `models/roboflow_logistics_yolov8.pt` | object detector checkpoint |
-| `enabled_classes` | competition allow-list | classes allowed into output |
-| `confidence` | `0.35` | object confidence threshold |
-| `device` | `cpu` | Ultralytics device |
-| `publish_rate_hz` | `1.0` | output rate for static images |
-
-Live perception node:
-
-| Parameter | Default | Meaning |
-|---|---|---|
-| `image_topic` | `/zed/zed_node/rgb/color/rect/image` | ZED X rectified RGB topic to subscribe to |
-| `project_root` | `/home/alexander/Desktop/seg` | YOLOPv2 source/utilities path |
-| `segmentation_weights_path` | `/home/alexander/Desktop/seg/data/weights/yolopv2.pt` | YOLOPv2 checkpoint |
-| `object_model_path` | `models/roboflow_logistics_yolov8.pt` | object detector checkpoint |
-| `device` | `cpu` | PyTorch / Ultralytics device |
-| `img_size` | `640` | segmentation model letterbox size |
-| `seg_conf_thres` | `0.30` | YOLOPv2 detection confidence threshold |
-| `seg_iou_thres` | `0.45` | YOLOPv2 NMS IoU threshold |
-| `object_confidence` | `0.35` | object detector confidence threshold |
-| `enabled_classes` | competition allow-list | comma-separated object classes |
-| `process_every_n` | `1` | process every Nth camera frame |
-| `publish_input_image` | `true` | republish the input frame |
-| `publish_timing` | `true` | publish timing JSON |
 
 ## Run
 
-Run semantic road/lane segmentation demo:
+Live ZED X perception:
+
+```bash
+source /opt/ros/jazzy/setup.bash
+source /home/alexander/Desktop/Competiton_Semantic_Segmentation/ros2_ws/install/setup.bash
+ros2 launch seg_ros_bridge live_perception.launch.py \
+  image_topic:=/zed/zed_node/rgb/color/rect/image \
+  device:=cpu \
+  process_every_n:=1
+```
+
+Older ZED ROS 2 setups may publish rectified RGB on:
+
+```text
+/zed/zed_node/rgb/image_rect_color
+```
+
+Check the available camera topics:
+
+```bash
+ros2 topic list | grep zed
+```
+
+Static road/lane proof:
 
 ```bash
 source /opt/ros/jazzy/setup.bash
@@ -325,54 +248,23 @@ cd /home/alexander/Desktop/seg
   -p device:=cpu
 ```
 
-Run competition object detector:
+Static object detector proof:
 
 ```bash
 source /opt/ros/jazzy/setup.bash
-cd /home/alexander/Desktop/Competiton_Semantic_Segmentation/ros2_ws
+source /home/alexander/Desktop/Competiton_Semantic_Segmentation/ros2_ws/install/setup.bash
 ros2 launch seg_ros_bridge competition_objects.launch.py
 ```
 
-Run live ZED X perception:
+Verify live output:
 
 ```bash
-source /opt/ros/jazzy/setup.bash
-cd /home/alexander/Desktop/Competiton_Semantic_Segmentation/ros2_ws
-ros2 launch seg_ros_bridge live_perception.launch.py \
-  image_topic:=/zed/zed_node/rgb/color/rect/image \
-  device:=cpu \
-  process_every_n:=1
-```
-
-Some older ZED ROS 2 setups publish the rectified RGB image on:
-
-```text
-/zed/zed_node/rgb/image_rect_color
-```
-
-If that is what appears in `ros2 topic list`, pass it as `image_topic:=/zed/zed_node/rgb/image_rect_color`.
-
-Verify:
-
-```bash
-source /opt/ros/jazzy/setup.bash
 ros2 topic list | grep '^/seg_ros/'
-ros2 topic echo /seg_ros/competition_objects/detections --once
 ros2 topic echo /seg_ros/live/detections --once
+ros2 topic echo /seg_ros/live/timing --once
 ```
 
-## Reproduce Proofs
-
-Road/lane segmentation proof:
-
-```bash
-/home/alexander/github/av-perception/.venv/bin/python \
-  scripts/export_roadline_proof.py \
-  --project-root /home/alexander/Desktop/seg \
-  --weights /home/alexander/Desktop/seg/data/weights/yolopv2.pt \
-  --output-dir proof \
-  --device cpu
-```
+## Reproduce Evaluations
 
 Traffic-cone evaluation:
 
@@ -394,67 +286,38 @@ Combined semantic road + cone proof:
   scripts/generate_combined_semantic_cone_proof.py
 ```
 
-## Validation Method
-
-Road/lane validation currently verifies:
-
-- model loads and runs on static road frames
-- drivable-area mask is non-empty
-- lane-line mask is non-empty
-- overlay image aligns visually with road/lane regions
-- ROS 2 image topics publish with expected encodings
-- label metadata publishes with transient-local QoS
-- live node starts, subscribes to a camera image topic, and preserves input message headers on derived outputs
-
-Traffic-cone validation currently uses:
-
-- local XML annotations
-- `traffic cone` class filtering
-- IoU matching at `0.50`
-- precision, recall, and F1 reporting
-- road-scene false-positive smoke testing
-
-This is an integration validation, not a final safety certification.
-
-## Proof Files
-
-Combined proof:
+## Project Layout
 
 ```text
-proof/combined/semantic_segmentation_plus_cones_contact_sheet.jpg
-proof/combined/semantic_segmentation_plus_cones_road.jpg
-proof/source_images/road_cars_cones_input.jpg
+docs/
+  datasets_and_training.md
+  semantic_roadlines_pipeline.md
+  technical_architecture.md
+  traffic_cones/README.md
+models/
+  roboflow_logistics_yolov8.pt
+proof/
+  combined/
+  source_images/
+  traffic_cones/
+ros2_ws/src/seg_ros_bridge/
+scripts/
 ```
 
-Traffic cone proof:
+## Limitations
 
-```text
-proof/traffic_cones/actual_road_cone_contact_sheet.jpg
-proof/traffic_cones/traffic_cone_eval_contact_sheet.jpg
-proof/traffic_cones/traffic_cone_eval.json
-proof/traffic_cones/actual_road_cone_test.json
-```
-
-Source image credit:
-
-```text
-Photo by Limi change on Unsplash
-https://unsplash.com/photos/a-city-street-filled-with-traffic-and-construction-cones-5AFdk2U3htY
-```
-
-## Known Limits
-
-- The road/lane model is still an upstream pretrained checkpoint, not a locally fine-tuned competition model.
-- The object detector has good traffic-cone proof results, but live performance still needs validation on the actual robot camera.
-- Static proof images are not a replacement for live ZED X testing, motion blur testing, nighttime testing, or Nav2 integration testing.
-- The live node is ROS-compatible, but this repository cannot prove field reliability without a connected camera and real road/cone scenes.
-- Lane-line masks should be treated as navigation cues, not physical obstacles.
-- Cones and people should be treated as safety cues, then fused with geometric obstacle sensing before driving decisions.
+- The road/lane model is an upstream pretrained checkpoint, not a locally fine-tuned competition model.
+- The cone detector measured about 83% F1 on the available labeled cone dataset, which is useful but not safety-grade.
+- Live ZED X field reliability still needs to be measured on actual robot video.
+- Road/lane IoU cannot be reported until ZED X road/lane masks are labeled.
+- 2D cone/person detections should not become physical obstacles until fused with ZED depth, point cloud, lidar, or another geometric source.
+- Lane-line masks should be treated as navigation cues, not collision truth.
 
 ## Next Steps
 
-1. Test `live_perception_node` against the actual ZED X topic on the robot.
-2. Record a local validation set from the robot camera with road, lane-line, cone, person, and anomaly examples.
-3. Label a small project-owned dataset for lane/drivable masks and traffic cones.
-4. Fine-tune or replace the pretrained models only after local validation shows the failure cases clearly.
-5. Feed drivable-area masks into a Nav2 semantic costmap experiment while keeping geometric obstacle layers active.
+1. Run `live_perception_node` against the physical ZED X camera on the robot.
+2. Record 100-200 ZED X frames with road, lane markings, cones, people, and anomalies.
+3. Label cone boxes plus drivable-road and lane-line masks.
+4. Report cone F1 and road/lane IoU on that ZED X validation set.
+5. Add typed `vision_msgs/msg/Detection2DArray` output beside the existing JSON debug output.
+6. Fuse detections with depth/point cloud before Nav2 costmap integration.
