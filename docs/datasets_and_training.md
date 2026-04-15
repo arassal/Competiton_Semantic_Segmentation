@@ -149,6 +149,21 @@ recall: 0.8323
 F1: 0.8299
 ```
 
+Latest live subscriber smoke test:
+
+```text
+input: proof/source_images/road_cars_cones_input.jpg published as ROS Image
+topic: /codex/test_image
+output: /seg_ros/live/detections
+segmentation detections: 2
+traffic cones detected: 8
+people detected: 2
+cars detected: 1
+CPU timing: about 630 ms/frame
+```
+
+Road/lane segmentation does not yet have project-owned ZED X ground-truth masks, so road/lane IoU and mIoU are not reported yet.
+
 Road-scene smoke test:
 
 ```text
@@ -164,7 +179,7 @@ No project-owned fine-tuned checkpoint has been produced yet.
 
 Still needed before claiming a custom-trained model:
 
-1. Record local RealSense video from the actual robot camera.
+1. Record local ZED X video from the actual robot camera.
 2. Extract representative frames from competition-like routes.
 3. Label drivable area, lane markings, traffic cones, people, and unusual road anomalies.
 4. Split the data into train, validation, and test sets.
@@ -238,9 +253,9 @@ Recommended manifest fields:
 {
   "dataset_name": "competition_road_perception",
   "version": "v001",
-  "camera": "Intel RealSense",
+  "camera": "Stereolabs ZED X",
   "ros_distro": "jazzy",
-  "image_topic": "/camera/camera/color/image_raw",
+  "image_topic": "/zed/zed_node/rgb/color/rect/image",
   "frame_id": "camera_color_optical_frame",
   "label_classes": ["drivable_area", "lane_marking", "traffic_cone", "person", "road_anomaly"],
   "splits": {
@@ -257,7 +272,7 @@ Split rules:
 - Keep complete driving segments in only one split.
 - Keep difficult scenes in all splits, not only the test split.
 - The final test split should stay frozen after the first published baseline.
-- Record camera height, lens settings, resolution, route, lighting, and weather for every session.
+- Record camera height, ZED X calibration/profile settings, resolution, route, lighting, and weather for every session.
 
 ## Training Plan
 

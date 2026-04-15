@@ -25,6 +25,7 @@ setup(
         'console_scripts': [
             'seg_demo_node = seg_ros_bridge.seg_demo_node:main',
             'competition_objects_node = seg_ros_bridge.competition_objects_node:main',
+            'live_perception_node = seg_ros_bridge.live_perception_node:main',
         ],
     },
 )
