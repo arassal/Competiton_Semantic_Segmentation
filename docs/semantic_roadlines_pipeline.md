@@ -82,9 +82,9 @@ This still makes the final system ours. The pretrained model is the starting che
 ## Target ROS 2 Pipeline
 
 ```text
-RealSense / camera image
-  /camera/camera/color/image_raw
-  /camera/camera/color/camera_info
+ZED X / camera image
+  /zed/zed_node/rgb/color/rect/image
+  /zed/zed_node/rgb/camera_info
         |
         v
 avros_lane_segmentation_node
@@ -125,9 +125,9 @@ Inputs:
 
 | Topic | Type | Notes |
 |---|---|---|
-| `/camera/camera/color/image_raw` | `sensor_msgs/msg/Image` | Main RGB input |
-| `/camera/camera/color/camera_info` | `sensor_msgs/msg/CameraInfo` | Needed for projection and overlays |
-| `/camera/camera/depth/color/points` | `sensor_msgs/msg/PointCloud2` | Needed later for Nav2 semantic costmap projection |
+| `/zed/zed_node/rgb/color/rect/image` | `sensor_msgs/msg/Image` | Main rectified RGB input |
+| `/zed/zed_node/rgb/camera_info` | `sensor_msgs/msg/CameraInfo` | Needed for projection and overlays |
+| `/zed/zed_node/point_cloud/cloud_registered` | `sensor_msgs/msg/PointCloud2` | Needed later for Nav2 semantic costmap projection |
 
 Outputs:
 
@@ -286,7 +286,7 @@ Tasks:
 1. Own the ROS 2 package and API.
 2. Keep third-party model code isolated under clear license notes.
 3. Write our own launch/config/topic documentation.
-4. Record our own validation dataset with the RealSense.
+4. Record our own validation dataset with the ZED X camera.
 5. Label a small local dataset for road lines and drivable areas.
 6. Fine-tune the model on our camera perspective and local routes.
 7. Export our tuned model to ONNX/TensorRT.
@@ -315,7 +315,7 @@ Road-line segmentation is harder than road/sidewalk segmentation because lane ma
 Accuracy plan:
 
 1. Start with TwinLiteNetPlus Large, not Nano, unless speed is unacceptable.
-2. Benchmark on our own RealSense frames before integrating with Nav2.
+2. Benchmark on our own ZED X frames before integrating with Nav2.
 3. Use confidence thresholds and connected-component cleanup.
 4. Fuse with drivable-area segmentation so isolated false lane marks outside road are rejected.
 5. Add temporal smoothing across frames.
