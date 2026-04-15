@@ -206,6 +206,59 @@ Annotation targets:
 | road anomaly / debris | bounding box or segmentation mask depending on size |
 | ignore regions | mask for ambiguous/unsafe labels |
 
+Recommended dataset structure:
+
+```text
+dataset_v001/
+  images/
+    train/
+    val/
+    test/
+  labels_detection/
+    train/
+    val/
+    test/
+  masks_drivable/
+    train/
+    val/
+    test/
+  masks_lane/
+    train/
+    val/
+    test/
+  manifests/
+    dataset_manifest.json
+    split_manifest.json
+    label_policy.md
+```
+
+Recommended manifest fields:
+
+```json
+{
+  "dataset_name": "competition_road_perception",
+  "version": "v001",
+  "camera": "Intel RealSense",
+  "ros_distro": "jazzy",
+  "image_topic": "/camera/camera/color/image_raw",
+  "frame_id": "camera_color_optical_frame",
+  "label_classes": ["drivable_area", "lane_marking", "traffic_cone", "person", "road_anomaly"],
+  "splits": {
+    "train": 0,
+    "val": 0,
+    "test": 0
+  }
+}
+```
+
+Split rules:
+
+- Do not split adjacent video frames across train/val/test.
+- Keep complete driving segments in only one split.
+- Keep difficult scenes in all splits, not only the test split.
+- The final test split should stay frozen after the first published baseline.
+- Record camera height, lens settings, resolution, route, lighting, and weather for every session.
+
 ## Training Plan
 
 Baseline:
@@ -232,6 +285,28 @@ Metrics to report:
 | lane markings | IoU plus visual stability |
 | live ROS 2 node | FPS, latency, dropped frames |
 | navigation integration | false obstacle rate, missed obstacle rate, behavior in RViz/Nav2 |
+
+Metric definitions:
+
+```text
+precision = true_positives / (true_positives + false_positives)
+recall    = true_positives / (true_positives + false_negatives)
+F1        = 2 * precision * recall / (precision + recall)
+IoU       = intersection(mask_prediction, mask_ground_truth) / union(mask_prediction, mask_ground_truth)
+```
+
+Training artifacts that must be saved with any future custom model:
+
+- dataset version
+- git commit SHA
+- training command
+- model config
+- pretrained checkpoint source
+- final checkpoint path
+- validation metrics
+- held-out test metrics
+- failure-case image folder
+- inference latency on the target machine
 
 ## Professional Claim Boundary
 

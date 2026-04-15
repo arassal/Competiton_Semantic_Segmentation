@@ -14,6 +14,7 @@ Current source-of-truth documentation for model provenance, datasets, and traini
 
 ```text
 docs/datasets_and_training.md
+docs/technical_architecture.md
 models/README.md
 ```
 

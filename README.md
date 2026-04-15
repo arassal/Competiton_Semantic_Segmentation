@@ -18,6 +18,20 @@ The repository currently wraps pretrained perception models into a ROS 2-compati
 | Live RealSense camera input | Planned next implementation step |
 | Nav2 semantic costmap integration | Planned; not claimed as complete |
 
+## Technical Stack
+
+| Area | Implementation |
+|---|---|
+| ROS package | `seg_ros_bridge`, Python `ament_python` |
+| ROS distribution | ROS 2 Jazzy |
+| Image bridge | `cv_bridge`, OpenCV BGR frames |
+| Road/lane backend | YOLOPv2 TorchScript checkpoint loaded with PyTorch |
+| Object backend | Ultralytics YOLOv8 checkpoint trained on Roboflow Logistics data |
+| Road/lane outputs | `sensor_msgs/msg/Image` masks and overlay, `vision_msgs/msg/LabelInfo`, JSON detections |
+| Object outputs | annotated `sensor_msgs/msg/Image`, JSON detections |
+| Current runtime mode | deterministic static-image publishers for repeatable proof runs |
+| Next runtime mode | live camera subscriber for RealSense `/camera/camera/color/image_raw` |
+
 ## Pipeline
 
 One perception path: road image in, semantic road/lane masks and cone detections out.
@@ -60,8 +74,50 @@ This project uses pretrained upstream models. The ROS 2 integration, proof scrip
 Detailed dataset, model provenance, training status, and future fine-tuning plan:
 
 - [Dataset and Training Notes](docs/datasets_and_training.md)
+- [Technical Architecture](docs/technical_architecture.md)
 - [Model Weights](models/README.md)
 - [Traffic Cone Detection Notes](docs/traffic_cones/README.md)
+
+## Runtime Architecture
+
+Current implementation contains two ROS nodes.
+
+| Node | Backend | Input source | Main outputs |
+|---|---|---|---|
+| `seg_demo_node` | YOLOPv2 | image directory | drivable mask, lane mask, lane confidence, overlay, label map, detection JSON |
+| `competition_objects_node` | Roboflow Logistics YOLOv8 | image directory | annotated image, object detection JSON |
+
+Road/lane inference path:
+
+```text
+OpenCV image
+  -> resize to 1280x720
+  -> YOLOPv2 letterbox to 640
+  -> RGB tensor normalization
+  -> TorchScript forward pass
+  -> drivable-area mask
+  -> lane-line mask
+  -> ROS image publications
+```
+
+Object detection path:
+
+```text
+OpenCV image
+  -> Ultralytics YOLOv8 inference at imgsz=640
+  -> confidence filtering
+  -> class allow-list
+  -> annotated image
+  -> JSON detection publication
+```
+
+Detection bounding boxes use image-pixel `xyxy` format:
+
+```text
+[x_min, y_min, x_max, y_max]
+```
+
+For navigation, these 2D detections still need camera calibration and depth/lidar association before they can become physical obstacles.
 
 ## What Works Now
 
@@ -100,23 +156,60 @@ road smoke test:
 
 Road/lane segmentation topics:
 
-| Topic | Type | Purpose |
-|---|---|---|
-| `/seg_ros/input_image` | `sensor_msgs/msg/Image` | Source frame used for inference |
-| `/seg_ros/overlay_image` | `sensor_msgs/msg/Image` | Debug image with segmentation overlay |
-| `/seg_ros/drivable_mask` | `sensor_msgs/msg/Image` | Mono drivable-area mask |
-| `/seg_ros/lane_mask` | `sensor_msgs/msg/Image` | Mono lane-line mask |
-| `/seg_ros/lane_confidence` | `sensor_msgs/msg/Image` | Mono lane confidence image |
-| `/seg_ros/label_info` | `vision_msgs/msg/LabelInfo` | Semantic class labels |
-| `/seg_ros/detections` | `std_msgs/msg/String` | JSON detections from YOLOPv2 |
+| Topic | Type | Encoding / payload | Purpose |
+|---|---|---|---|
+| `/seg_ros/input_image` | `sensor_msgs/msg/Image` | `bgr8` | Source frame used for inference |
+| `/seg_ros/overlay_image` | `sensor_msgs/msg/Image` | `bgr8` | Debug image with segmentation overlay |
+| `/seg_ros/drivable_mask` | `sensor_msgs/msg/Image` | `mono8`, 0 or 255 | Drivable-area mask |
+| `/seg_ros/lane_mask` | `sensor_msgs/msg/Image` | `mono8`, 0 or 255 | Lane-line mask |
+| `/seg_ros/lane_confidence` | `sensor_msgs/msg/Image` | `mono8`, 0 or 255 | Current lane confidence proxy |
+| `/seg_ros/label_info` | `vision_msgs/msg/LabelInfo` | transient-local class map | Semantic class labels |
+| `/seg_ros/detections` | `std_msgs/msg/String` | JSON | YOLOPv2 detection boxes |
 
 Competition object topics:
 
-| Topic | Type | Purpose |
-|---|---|---|
-| `/seg_ros/competition_objects/input_image` | `sensor_msgs/msg/Image` | Source frame used for object inference |
-| `/seg_ros/competition_objects/annotated_image` | `sensor_msgs/msg/Image` | Debug image with object boxes |
-| `/seg_ros/competition_objects/detections` | `std_msgs/msg/String` | JSON object detections |
+| Topic | Type | Encoding / payload | Purpose |
+|---|---|---|---|
+| `/seg_ros/competition_objects/input_image` | `sensor_msgs/msg/Image` | `bgr8` | Source frame used for object inference |
+| `/seg_ros/competition_objects/annotated_image` | `sensor_msgs/msg/Image` | `bgr8` | Debug image with object boxes |
+| `/seg_ros/competition_objects/detections` | `std_msgs/msg/String` | JSON | Filtered competition object detections |
+
+Semantic label map:
+
+| Class ID | Class name |
+|---:|---|
+| 0 | `background` |
+| 1 | `drivable_area` |
+| 2 | `lane_marking` |
+
+Competition object allow-list:
+
+```text
+person
+traffic cone
+traffic light
+road sign
+car
+truck
+van
+```
+
+Example object detection JSON:
+
+```json
+{
+  "image": "frame_name.jpg",
+  "count": 1,
+  "detections": [
+    {
+      "type": "traffic_cone",
+      "class_name": "traffic cone",
+      "confidence": 0.87,
+      "xyxy": [248.0, 315.0, 302.0, 417.0]
+    }
+  ]
+}
+```
 
 ## Repository Layout
 
@@ -125,6 +218,7 @@ docs/
   datasets_and_training.md
   ros2_semantic_segmentation_pipeline.png
   semantic_roadlines_pipeline.md
+  technical_architecture.md
   traffic_cones/README.md
 models/
   README.md
@@ -156,6 +250,32 @@ cv_bridge
 vision_msgs
 PyTorch / Ultralytics runtime
 ```
+
+## Launch Parameters
+
+Road/lane segmentation node:
+
+| Parameter | Default | Meaning |
+|---|---|---|
+| `project_root` | `/home/alexander/Desktop/seg` | YOLOPv2 source/utilities path |
+| `image_dir` | `${project_root}/data/demo` | static demo image folder |
+| `weights_path` | `${project_root}/data/weights/yolopv2.pt` | YOLOPv2 checkpoint |
+| `device` | `cpu` | PyTorch device |
+| `img_size` | `640` | model letterbox size |
+| `conf_thres` | `0.30` | detection confidence threshold |
+| `iou_thres` | `0.45` | NMS IoU threshold |
+| `publish_rate_hz` | `1.0` | output rate for static images |
+
+Competition object node:
+
+| Parameter | Default | Meaning |
+|---|---|---|
+| `image_dir` | `proof/traffic_cones/raw_road_inputs` | static object-demo image folder |
+| `model_path` | `models/roboflow_logistics_yolov8.pt` | object detector checkpoint |
+| `enabled_classes` | competition allow-list | classes allowed into output |
+| `confidence` | `0.35` | object confidence threshold |
+| `device` | `cpu` | Ultralytics device |
+| `publish_rate_hz` | `1.0` | output rate for static images |
 
 ## Run
 
@@ -221,6 +341,27 @@ Combined semantic road + cone proof:
 /home/alexander/github/av-perception/.venv/bin/python \
   scripts/generate_combined_semantic_cone_proof.py
 ```
+
+## Validation Method
+
+Road/lane validation currently verifies:
+
+- model loads and runs on static road frames
+- drivable-area mask is non-empty
+- lane-line mask is non-empty
+- overlay image aligns visually with road/lane regions
+- ROS 2 image topics publish with expected encodings
+- label metadata publishes with transient-local QoS
+
+Traffic-cone validation currently uses:
+
+- local XML annotations
+- `traffic cone` class filtering
+- IoU matching at `0.50`
+- precision, recall, and F1 reporting
+- road-scene false-positive smoke testing
+
+This is an integration validation, not a final safety certification.
 
 ## Proof Files
 
