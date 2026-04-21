@@ -15,6 +15,7 @@ This repository wraps pretrained perception models in a project-owned ROS 2 pack
 | Traffic-cone detection | Working from included Roboflow Logistics YOLOv8 checkpoint |
 | People / vehicle / sign detection | Supported by the included object detector |
 | Live camera path | Implemented for ZED X ROS 2 image topics |
+| SegFormer comparison | Optional experimental backend on a separate topic namespace |
 | ROS 2 package | Builds with `colcon` on ROS 2 Jazzy |
 | Nav2 semantic costmap | Planned, not claimed complete |
 | Local custom training | Not done yet; dataset plan documented |
@@ -91,6 +92,16 @@ segmentation detections: 2
 CPU inference time: about 630 ms/frame
 ```
 
+SegFormer comparison smoke test on the same saved image:
+
+```text
+model: nvidia/segformer-b0-finetuned-cityscapes-512-1024
+road pixels: 669,873
+sidewalk pixels: 33,905
+top classes: road, fence, car, building, vegetation, person
+CPU inference time: about 963 ms/frame
+```
+
 Road/lane segmentation is functionally validated by non-empty masks and proof images. Numeric road/lane IoU is not reported yet because project-owned ground-truth road/lane masks for the ZED X camera have not been labeled.
 
 ## Models
@@ -99,6 +110,7 @@ Road/lane segmentation is functionally validated by non-empty masks and proof im
 |---|---|---|---|
 | YOLOPv2 | drivable area, lane-line masks, driving-scene detections | Upstream YOLOPv2 checkpoint, documented around BDD100K-style driving perception | No, external checkpoint |
 | Roboflow Logistics YOLOv8 | traffic cones, people, signs, vehicles, logistics objects | Roboflow Logistics dataset, 99,238 images, 20 classes, reported 76% mAP | Yes |
+| SegFormer B0 Cityscapes | optional road/sidewalk semantic comparison | Hugging Face `nvidia/segformer-b0-finetuned-cityscapes-512-1024` | No, downloaded by `transformers` |
 
 Included checkpoint:
 
@@ -116,6 +128,7 @@ Detailed model and dataset notes:
 
 - [Dataset and Training Notes](docs/datasets_and_training.md)
 - [Technical Architecture](docs/technical_architecture.md)
+- [SegFormer Experiment](docs/segformer_experiment.md)
 - [ZED X Validation Workflow](docs/zed_validation_workflow.md)
 - [Model Weights](models/README.md)
 - [Traffic Cone Detection Notes](docs/traffic_cones/README.md)
@@ -127,6 +140,7 @@ Detailed model and dataset notes:
 | `seg_demo_node` | static road images | road/lane masks, overlay, label info, YOLOPv2 detections |
 | `competition_objects_node` | static object-demo images | annotated image, object detection JSON |
 | `live_perception_node` | ROS image topic | live road/lane masks, combined overlay, label info, object detections, timing |
+| `segformer_node` | ROS image topic | optional Cityscapes semantic masks for comparison |
 | `zed_image_recorder_node` | ZED X ROS image topic | saved validation frames and `manifest.json` |
 
 ## ROS Topics
@@ -145,6 +159,8 @@ Live perception topics:
 | `/seg_ros/live/timing` | `std_msgs/msg/String` | runtime timing JSON |
 
 Static proof topics remain available under `/seg_ros/*` and `/seg_ros/competition_objects/*`.
+
+SegFormer comparison topics are published under `/seg_ros/segformer/*`.
 
 Semantic class map:
 
@@ -258,6 +274,19 @@ source /home/alexander/Desktop/Competiton_Semantic_Segmentation/ros2_ws/install/
 ros2 launch seg_ros_bridge competition_objects.launch.py
 ```
 
+Optional SegFormer comparison:
+
+```bash
+/home/alexander/github/av-perception/.venv/bin/python -m pip install -r requirements-segformer.txt
+
+source /opt/ros/jazzy/setup.bash
+source /home/alexander/Desktop/Competiton_Semantic_Segmentation/ros2_ws/install/setup.bash
+ros2 launch seg_ros_bridge segformer.launch.py \
+  image_topic:=/zed/zed_node/rgb/color/rect/image \
+  model_id:=nvidia/segformer-b0-finetuned-cityscapes-512-1024 \
+  device:=cpu
+```
+
 Verify live output:
 
 ```bash
@@ -316,6 +345,7 @@ Benchmark current models on an image folder:
 ```text
 docs/
   datasets_and_training.md
+  segformer_experiment.md
   semantic_roadlines_pipeline.md
   technical_architecture.md
   traffic_cones/README.md
@@ -330,6 +360,7 @@ ros2_ws/src/seg_ros_bridge/
 scripts/
   benchmark_live_perception.py
   extract_validation_frames.py
+requirements-segformer.txt
 ```
 
 ## Limitations
