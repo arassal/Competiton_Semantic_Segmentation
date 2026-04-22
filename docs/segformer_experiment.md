@@ -140,3 +140,13 @@ timing: about 963 ms/frame
 ```
 
 This confirms the ROS node works and produces Cityscapes semantic masks. It does not prove that SegFormer is better than YOLOPv2 for lane-line segmentation, because the Cityscapes model does not provide a lane-line class.
+
+Generated proof files:
+
+```text
+proof/segformer/segformer_contact_sheet.jpg
+proof/segformer/segformer_cityscapes_overlay.jpg
+proof/segformer/segformer_road_mask.png
+proof/segformer/segformer_sidewalk_mask.png
+proof/segformer/segformer_class_overlay.png
+```
