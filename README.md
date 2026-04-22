@@ -40,11 +40,15 @@ ROS 2 outputs
 
 ## SegFormer Proof
 
-The proof below uses the same road/cone source image used by the `main` branch, but renders the SegFormer Cityscapes semantic output instead.
+The proof below uses dashcam-style images from the car-view YOLOPv2 demo set, but renders **SegFormer only**. No YOLO model is used for these outputs.
 
 ```text
 input image | SegFormer semantic overlay | road mask | sidewalk mask
 ```
+
+![SegFormer dashcam proof](proof/segformer_dashcam/segformer_dashcam_contact_sheet.jpg)
+
+The proof below uses the same road/cone source image used by the `main` branch, but renders the SegFormer Cityscapes semantic output instead.
 
 ![SegFormer Cityscapes proof](proof/segformer/segformer_contact_sheet.jpg)
 
@@ -64,6 +68,23 @@ sidewalk pixels: 33,905
 top classes: road, fence, car, building, vegetation, person
 CPU inference time: about 963 ms/frame
 ```
+
+SegFormer-only dashcam proof run:
+
+```text
+input directory: /home/alexander/Desktop/seg/data/demo
+images processed: 8
+output directory: proof/segformer_dashcam
+format: input | SegFormer overlay | road mask | sidewalk mask
+YOLO used: no
+```
+
+Observed behavior from the dashcam proof:
+
+- SegFormer produces a usable Cityscapes `road` mask on multiple car-view frames.
+- It can provide `sidewalk` where the model sees sidewalk-like regions.
+- It sometimes maps unfamiliar objects into Cityscapes labels such as `train`, `rider`, or `bus`.
+- It still does not output lane markings or traffic cones.
 
 For comparison, the current `main` branch live YOLOPv2 + Roboflow smoke test on the same source image reported:
 
@@ -162,6 +183,17 @@ ros2 launch seg_ros_bridge segformer.launch.py \
   process_every_n:=1
 ```
 
+Generate the SegFormer-only dashcam proof:
+
+```bash
+/home/alexander/github/av-perception/.venv/bin/python \
+  scripts/generate_segformer_dashcam_proof.py \
+  --input-dir /home/alexander/Desktop/seg/data/demo \
+  --output-dir proof/segformer_dashcam \
+  --device cpu \
+  --limit 8
+```
+
 Verify:
 
 ```bash
@@ -256,6 +288,14 @@ Best use for this branch:
 
 ```text
 compare SegFormer road/sidewalk masks against YOLOPv2 drivable masks on real ZED X frames
+```
+
+Current branch evidence:
+
+```text
+SegFormer-only dashcam proof exists and runs without YOLO.
+It is useful for road/sidewalk semantics.
+It is still incomplete for lane lines and cones.
 ```
 
 ## Related Docs

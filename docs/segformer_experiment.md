@@ -150,3 +150,37 @@ proof/segformer/segformer_road_mask.png
 proof/segformer/segformer_sidewalk_mask.png
 proof/segformer/segformer_class_overlay.png
 ```
+
+## Dashcam-Style Proof Without YOLO
+
+The branch also includes a reusable proof script that runs SegFormer only on car-view images:
+
+```bash
+/home/alexander/github/av-perception/.venv/bin/python \
+  scripts/generate_segformer_dashcam_proof.py \
+  --input-dir /home/alexander/Desktop/seg/data/demo \
+  --output-dir proof/segformer_dashcam \
+  --device cpu \
+  --limit 8
+```
+
+Output format:
+
+```text
+input image | SegFormer semantic overlay | road mask | sidewalk mask
+```
+
+Generated proof:
+
+```text
+proof/segformer_dashcam/segformer_dashcam_contact_sheet.jpg
+proof/segformer_dashcam/segformer_dashcam_summary.json
+```
+
+This proof intentionally does not use YOLO. It shows what the Cityscapes SegFormer model can do by itself on dashcam-style images.
+
+Observed limitation:
+
+```text
+SegFormer produces road masks, but it can map unfamiliar objects into Cityscapes classes such as train, rider, or bus. It still does not output lane-line or traffic-cone classes.
+```
