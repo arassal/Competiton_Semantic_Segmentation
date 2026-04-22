@@ -194,6 +194,25 @@ Generate the SegFormer-only dashcam proof:
   --limit 8
 ```
 
+Run the local SegFormer web UI:
+
+```bash
+/home/alexander/github/av-perception/.venv/bin/python \
+  scripts/segformer_webui.py \
+  --image-dir /home/alexander/Desktop/seg/data/demo \
+  --host 127.0.0.1 \
+  --port 7861 \
+  --device cpu
+```
+
+Open:
+
+```text
+http://127.0.0.1:7861
+```
+
+The web UI lets you flip through raw dashcam images and run SegFormer on demand. It shows the unmodified input, semantic overlay, road mask, sidewalk mask, class counts, and timing. It does not use YOLO.
+
 Verify:
 
 ```bash

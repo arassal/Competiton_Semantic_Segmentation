@@ -81,7 +81,7 @@ def make_contact_sheet(rows, output_path):
     for original, overlay, road, sidewalk in rows:
         tiles = []
         for image, label in (
-            (original, 'input'),
+            (original, 'RAW INPUT - unmodified'),
             (overlay, 'segformer semantic overlay'),
             (cv2.cvtColor(road, cv2.COLOR_GRAY2BGR), 'road mask'),
             (cv2.cvtColor(sidewalk, cv2.COLOR_GRAY2BGR), 'sidewalk mask'),

@@ -184,3 +184,33 @@ Observed limitation:
 ```text
 SegFormer produces road masks, but it can map unfamiliar objects into Cityscapes classes such as train, rider, or bus. It still does not output lane-line or traffic-cone classes.
 ```
+
+## Local Web UI
+
+Run a local browser UI for flipping through dashcam images and running SegFormer on demand:
+
+```bash
+/home/alexander/github/av-perception/.venv/bin/python \
+  scripts/segformer_webui.py \
+  --image-dir /home/alexander/Desktop/seg/data/demo \
+  --host 127.0.0.1 \
+  --port 7861 \
+  --device cpu
+```
+
+Open:
+
+```text
+http://127.0.0.1:7861
+```
+
+The UI displays:
+
+- raw unmodified input
+- SegFormer semantic overlay
+- road mask
+- sidewalk mask
+- top class counts
+- per-image inference timing
+
+It does not call YOLO.
