@@ -72,8 +72,8 @@ CPU inference time: about 963 ms/frame
 SegFormer-only dashcam proof run:
 
 ```text
-input directory: /home/alexander/Desktop/seg/data/demo
-images processed: 8
+input directory: proof/segformer_raw_dashcam_inputs
+images processed: 3
 output directory: proof/segformer_dashcam
 format: input | SegFormer overlay | road mask | sidewalk mask
 YOLO used: no
@@ -188,10 +188,10 @@ Generate the SegFormer-only dashcam proof:
 ```bash
 /home/alexander/github/av-perception/.venv/bin/python \
   scripts/generate_segformer_dashcam_proof.py \
-  --input-dir /home/alexander/Desktop/seg/data/demo \
+  --input-dir proof/segformer_raw_dashcam_inputs \
   --output-dir proof/segformer_dashcam \
   --device cpu \
-  --limit 8
+  --limit 6
 ```
 
 Run the local SegFormer web UI:
@@ -199,7 +199,7 @@ Run the local SegFormer web UI:
 ```bash
 /home/alexander/github/av-perception/.venv/bin/python \
   scripts/segformer_webui.py \
-  --image-dir /home/alexander/Desktop/seg/data/demo \
+  --image-dir proof/segformer_raw_dashcam_inputs \
   --host 127.0.0.1 \
   --port 7861 \
   --device cpu

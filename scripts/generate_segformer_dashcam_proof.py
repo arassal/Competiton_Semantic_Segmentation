@@ -17,7 +17,7 @@ def parse_args():
         description='Generate SegFormer-only dashcam semantic segmentation proofs.')
     parser.add_argument(
         '--input-dir',
-        default='/home/alexander/Desktop/seg/data/demo',
+        default='proof/segformer_raw_dashcam_inputs',
         help='Directory of dashcam/car-view images.')
     parser.add_argument(
         '--output-dir',

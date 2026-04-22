@@ -1,317 +1,122 @@
 {
   "model_id": "nvidia/segformer-b0-finetuned-cityscapes-512-1024",
-  "input_dir": "/home/alexander/Desktop/seg/data/demo",
-  "image_count": 8,
+  "input_dir": "/home/alexander/Desktop/Competiton_Semantic_Segmentation/proof/segformer_raw_dashcam_inputs",
+  "image_count": 3,
   "records": [
     {
-      "image": "/home/alexander/Desktop/seg/data/demo/all2.jpg",
-      "road_pixels": 529220,
-      "sidewalk_pixels": 66,
+      "image": "proof/segformer_raw_dashcam_inputs/pexels_city_dashboard.jpg",
+      "road_pixels": 274398,
+      "sidewalk_pixels": 101021,
       "top_classes": [
         [
-          "road",
-          529220
-        ],
-        [
-          "train",
-          101746
-        ],
-        [
-          "vegetation",
-          95630
-        ],
-        [
-          "bus",
-          59309
-        ],
-        [
-          "sky",
-          56069
+          "car",
+          10980079
         ],
         [
           "building",
-          36441
-        ],
-        [
-          "car",
-          21364
-        ],
-        [
-          "fence",
-          15317
-        ]
-      ]
-    },
-    {
-      "image": "/home/alexander/Desktop/seg/data/demo/all3.jpg",
-      "road_pixels": 312602,
-      "sidewalk_pixels": 29994,
-      "top_classes": [
-        [
-          "road",
-          312602
+          9385746
         ],
         [
           "vegetation",
-          311981
+          1255026
         ],
         [
           "sky",
-          102443
-        ],
-        [
-          "terrain",
-          60725
-        ],
-        [
-          "car",
-          54811
-        ],
-        [
-          "sidewalk",
-          29994
-        ],
-        [
-          "truck",
-          16537
-        ],
-        [
-          "fence",
-          16360
-        ]
-      ]
-    },
-    {
-      "image": "/home/alexander/Desktop/seg/data/demo/fs1.jpg",
-      "road_pixels": 336043,
-      "sidewalk_pixels": 29206,
-      "top_classes": [
-        [
-          "road",
-          336043
-        ],
-        [
-          "rider",
-          135312
-        ],
-        [
-          "vegetation",
-          130114
-        ],
-        [
-          "terrain",
-          86666
-        ],
-        [
-          "building",
-          73362
-        ],
-        [
-          "sky",
-          35752
-        ],
-        [
-          "sidewalk",
-          29206
-        ],
-        [
-          "fence",
-          27246
-        ]
-      ]
-    },
-    {
-      "image": "/home/alexander/Desktop/seg/data/demo/fs2.jpg",
-      "road_pixels": 235560,
-      "sidewalk_pixels": 552,
-      "top_classes": [
-        [
-          "road",
-          235560
-        ],
-        [
-          "car",
-          231449
-        ],
-        [
-          "sky",
-          211286
-        ],
-        [
-          "vegetation",
-          189980
-        ],
-        [
-          "building",
-          15691
-        ],
-        [
-          "terrain",
-          13888
+          597867
         ],
         [
           "wall",
-          12795
+          456167
         ],
         [
           "pole",
-          4924
+          353237
+        ],
+        [
+          "road",
+          274398
+        ],
+        [
+          "person",
+          198098
         ]
       ]
     },
     {
-      "image": "/home/alexander/Desktop/seg/data/demo/fs3.jpg",
-      "road_pixels": 210250,
-      "sidewalk_pixels": 9357,
+      "image": "proof/segformer_raw_dashcam_inputs/pexels_rainy_dashboard.jpg",
+      "road_pixels": 126419,
+      "sidewalk_pixels": 0,
       "top_classes": [
         [
           "car",
-          352854
-        ],
-        [
-          "road",
-          210250
-        ],
-        [
-          "vegetation",
-          172213
+          11331300
         ],
         [
           "building",
-          107596
+          8524245
         ],
         [
-          "sky",
-          26917
+          "person",
+          814415
+        ],
+        [
+          "wall",
+          594410
+        ],
+        [
+          "motorcycle",
+          318143
+        ],
+        [
+          "road",
+          126419
+        ],
+        [
+          "rider",
+          100194
         ],
         [
           "bus",
-          24026
-        ],
-        [
-          "terrain",
-          11148
-        ],
-        [
-          "sidewalk",
-          9357
+          87868
         ]
       ]
     },
     {
-      "image": "/home/alexander/Desktop/seg/data/demo/lane1.jpg",
-      "road_pixels": 59003,
-      "sidewalk_pixels": 52064,
+      "image": "proof/segformer_raw_dashcam_inputs/pexels_taxi_city.jpg",
+      "road_pixels": 5141,
+      "sidewalk_pixels": 182,
       "top_classes": [
         [
           "building",
-          441524
+          20354629
         ],
         [
-          "vegetation",
-          167952
-        ],
-        [
-          "fence",
-          136576
-        ],
-        [
-          "road",
-          59003
-        ],
-        [
-          "sidewalk",
-          52064
+          "car",
+          11984291
         ],
         [
           "person",
-          22124
+          7342156
         ],
         [
-          "pole",
-          12069
+          "bus",
+          331554
         ],
         [
-          "car",
-          11282
-        ]
-      ]
-    },
-    {
-      "image": "/home/alexander/Desktop/seg/data/demo/lane2.jpg",
-      "road_pixels": 220414,
-      "sidewalk_pixels": 65474,
-      "top_classes": [
-        [
-          "building",
-          344093
-        ],
-        [
-          "road",
-          220414
-        ],
-        [
-          "car",
-          195045
-        ],
-        [
-          "sidewalk",
-          65474
-        ],
-        [
-          "vegetation",
-          38116
-        ],
-        [
-          "fence",
-          20589
-        ],
-        [
-          "pole",
-          12517
-        ],
-        [
-          "terrain",
-          10788
-        ]
-      ]
-    },
-    {
-      "image": "/home/alexander/Desktop/seg/data/demo/lane3.jpg",
-      "road_pixels": 308685,
-      "sidewalk_pixels": 42635,
-      "top_classes": [
-        [
-          "road",
-          308685
-        ],
-        [
-          "building",
-          243256
-        ],
-        [
-          "sky",
-          206101
-        ],
-        [
-          "vegetation",
-          69214
-        ],
-        [
-          "sidewalk",
-          42635
-        ],
-        [
-          "car",
-          23291
+          "bicycle",
+          112531
         ],
         [
           "truck",
-          16170
+          99955
         ],
         [
-          "person",
-          5946
+          "rider",
+          71495
+        ],
+        [
+          "motorcycle",
+          47808
         ]
       ]
     }

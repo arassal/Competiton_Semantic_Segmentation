@@ -244,7 +244,7 @@ HTML = r"""<!doctype html>
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Local SegFormer image viewer.')
-    parser.add_argument('--image-dir', default='/home/alexander/Desktop/seg/data/demo')
+    parser.add_argument('--image-dir', default='proof/segformer_raw_dashcam_inputs')
     parser.add_argument('--host', default='127.0.0.1')
     parser.add_argument('--port', type=int, default=7861)
     parser.add_argument('--model-id', default=DEFAULT_MODEL_ID)

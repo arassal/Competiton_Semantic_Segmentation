@@ -158,10 +158,10 @@ The branch also includes a reusable proof script that runs SegFormer only on car
 ```bash
 /home/alexander/github/av-perception/.venv/bin/python \
   scripts/generate_segformer_dashcam_proof.py \
-  --input-dir /home/alexander/Desktop/seg/data/demo \
+  --input-dir proof/segformer_raw_dashcam_inputs \
   --output-dir proof/segformer_dashcam \
   --device cpu \
-  --limit 8
+  --limit 6
 ```
 
 Output format:
@@ -192,7 +192,7 @@ Run a local browser UI for flipping through dashcam images and running SegFormer
 ```bash
 /home/alexander/github/av-perception/.venv/bin/python \
   scripts/segformer_webui.py \
-  --image-dir /home/alexander/Desktop/seg/data/demo \
+  --image-dir proof/segformer_raw_dashcam_inputs \
   --host 127.0.0.1 \
   --port 7861 \
   --device cpu
