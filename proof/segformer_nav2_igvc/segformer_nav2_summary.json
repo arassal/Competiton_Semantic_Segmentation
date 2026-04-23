@@ -11,7 +11,10 @@
       "road_pixels_raw": 180110,
       "road_pixels_refined": 195955,
       "lane_hint_pixels": 291,
-      "nav2_keepout_cells": 10144,
+      "igvc_white_pixels": 747,
+      "igvc_lane_bev_pixels": 277,
+      "igvc_corridor_cells": 277,
+      "nav2_keepout_cells": 18841,
       "top_classes": [
         [
           "sky",
@@ -52,7 +55,10 @@
       "road_pixels_raw": 103962,
       "road_pixels_refined": 127563,
       "lane_hint_pixels": 2725,
-      "nav2_keepout_cells": 12026,
+      "igvc_white_pixels": 4306,
+      "igvc_lane_bev_pixels": 376,
+      "igvc_corridor_cells": 376,
+      "nav2_keepout_cells": 18585,
       "top_classes": [
         [
           "building",
@@ -93,7 +99,10 @@
       "road_pixels_raw": 381922,
       "road_pixels_refined": 397453,
       "lane_hint_pixels": 1216,
-      "nav2_keepout_cells": 799,
+      "igvc_white_pixels": 1615,
+      "igvc_lane_bev_pixels": 45,
+      "igvc_corridor_cells": 45,
+      "nav2_keepout_cells": 18970,
       "top_classes": [
         [
           "road",
@@ -134,7 +143,10 @@
       "road_pixels_raw": 174803,
       "road_pixels_refined": 186361,
       "lane_hint_pixels": 13697,
-      "nav2_keepout_cells": 8586,
+      "igvc_white_pixels": 16121,
+      "igvc_lane_bev_pixels": 1107,
+      "igvc_corridor_cells": 1107,
+      "nav2_keepout_cells": 17020,
       "top_classes": [
         [
           "vegetation",

@@ -2,11 +2,12 @@
 
 This branch turns the SegFormer experiment into a **ROS 2 Jazzy + RViz + Nav2-compatible local perception demo** for IGVC-style imagery.
 
-It does three things that `main` does not:
+It does four things that `main` does not:
 
 1. runs **SegFormer + HSV refinement** as a separate semantic backend
-2. publishes a **local Nav2 keepout mask** as `nav_msgs/msg/OccupancyGrid`
-3. provides a **repeatable RViz demo** using your image set in `/home/alexander/Desktop/img`
+2. extracts **IGVC-style white lane boundaries** in BEV
+3. publishes a **local Nav2 keepout mask** as `nav_msgs/msg/OccupancyGrid`
+4. provides a **repeatable RViz demo** using your image set in `/home/alexander/Desktop/img`
 
 This branch stays separate because it is still an experiment. It is meant to answer one question:
 
@@ -20,6 +21,7 @@ What is working in this branch:
 
 - ROS 2 image subscriber for SegFormer
 - optional HSV refinement for road fill and lane-paint hinting
+- IGVC-specific white-line extraction and lane corridor generation
 - RViz config showing input, overlay, masks, and Nav2 grids
 - replay node for `/home/alexander/Desktop/img`
 - local Nav2 outputs:
@@ -51,6 +53,8 @@ SegFormer alone does not solve all of that. This branch focuses on the part it c
 camera image
 -> semantic road understanding
 -> road refinement + lane-paint hints
+-> IGVC white-line extraction in BEV
+-> lane corridor estimate
 -> local keepout/drivable grid
 -> Nav2-compatible messages
 ```
@@ -75,6 +79,9 @@ segformer_node
         +--> /seg_ros/segformer/road_mask
         +--> /seg_ros/segformer/sidewalk_mask
         +--> /seg_ros/segformer/lane_hint_mask
+        +--> /seg_ros/segformer/igvc_white_mask
+        +--> /seg_ros/segformer/igvc_lane_bev
+        +--> /seg_ros/segformer/igvc_lane_corridor_mask
         +--> /seg_ros/segformer/nav2/filter_mask
         +--> /seg_ros/segformer/nav2/drivable_grid
         +--> /seg_ros/segformer/nav2/costmap_filter_info
@@ -85,7 +92,7 @@ segformer_node
 The contact sheet below was generated directly from your image folder:
 
 ```text
-raw input | segformer + hsv | refined road mask | lane hint mask | nav2 keepout bev
+raw input | segformer + hsv | refined road mask | lane hint mask | igvc lane bev | igvc corridor | nav2 keepout bev
 ```
 
 ![SegFormer Nav2 proof](proof/segformer_nav2_igvc/segformer_nav2_contact_sheet.jpg)
@@ -105,6 +112,9 @@ Generated summary:
 | `/seg_ros/segformer/road_mask` | `sensor_msgs/msg/Image` | HSV-refined road mask |
 | `/seg_ros/segformer/sidewalk_mask` | `sensor_msgs/msg/Image` | sidewalk class |
 | `/seg_ros/segformer/lane_hint_mask` | `sensor_msgs/msg/Image` | white/yellow paint cue mask |
+| `/seg_ros/segformer/igvc_white_mask` | `sensor_msgs/msg/Image` | white-line candidate mask in image space |
+| `/seg_ros/segformer/igvc_lane_bev` | `sensor_msgs/msg/Image` | bird's-eye lane boundary mask |
+| `/seg_ros/segformer/igvc_lane_corridor_mask` | `sensor_msgs/msg/Image` | fused lane corridor in BEV |
 | `/seg_ros/segformer/nav2/bev_keepout_mask` | `sensor_msgs/msg/Image` | projected top-down debug image |
 | `/seg_ros/segformer/nav2/filter_mask` | `nav_msgs/msg/OccupancyGrid` | Nav2 keepout filter mask |
 | `/seg_ros/segformer/nav2/drivable_grid` | `nav_msgs/msg/OccupancyGrid` | local drivable-vs-nondrivable grid |
@@ -195,6 +205,7 @@ This branch is a better **Nav2-facing semantic demo** than the older SegFormer b
 
 - RViz-visible masks
 - repeatable replay from your images
+- IGVC-specific lane boundaries and corridor extraction
 - planner-facing local occupancy outputs
 
 It is still weaker than a full competition stack because it does not yet cover:

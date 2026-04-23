@@ -94,6 +94,51 @@ Visualization Manager:
         Reliability Policy: Reliable
         Value: /seg_ros/segformer/sidewalk_mask
       Value: true
+    - Class: rviz_default_plugins/Image
+      Enabled: true
+      Max Value: 255
+      Median window: 5
+      Min Value: 0
+      Name: IGVC White Mask
+      Normalize Range: true
+      Queue Size: 2
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /seg_ros/segformer/igvc_white_mask
+      Value: true
+    - Class: rviz_default_plugins/Image
+      Enabled: true
+      Max Value: 255
+      Median window: 5
+      Min Value: 0
+      Name: IGVC Lane BEV
+      Normalize Range: true
+      Queue Size: 2
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /seg_ros/segformer/igvc_lane_bev
+      Value: true
+    - Class: rviz_default_plugins/Image
+      Enabled: true
+      Max Value: 255
+      Median window: 5
+      Min Value: 0
+      Name: IGVC Lane Corridor
+      Normalize Range: true
+      Queue Size: 2
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /seg_ros/segformer/igvc_lane_corridor_mask
+      Value: true
     - Alpha: 0.7
       Class: rviz_default_plugins/Map
       Color Scheme: map

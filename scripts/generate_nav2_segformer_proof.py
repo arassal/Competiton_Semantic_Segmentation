@@ -99,7 +99,88 @@ def make_overlay(frame, class_mask, label2id, road_mask, lane_hint_mask):
     return overlay
 
 
-def project_nav2(road_mask, lane_hint_mask, grid_width_cells, grid_height_cells):
+def select_largest_lane_component(mask):
+    num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(mask, connectivity=8)
+    if num_labels <= 1:
+        return np.zeros_like(mask)
+    best_index = -1
+    best_score = 0
+    for label in range(1, num_labels):
+        area = stats[label, cv2.CC_STAT_AREA]
+        width = stats[label, cv2.CC_STAT_WIDTH]
+        height = stats[label, cv2.CC_STAT_HEIGHT]
+        if area < 8 or height < 6:
+            continue
+        score = area + (height * 2) - width
+        if score > best_score:
+            best_score = score
+            best_index = label
+    if best_index == -1:
+        return np.zeros_like(mask)
+    return np.where(labels == best_index, 255, 0).astype(np.uint8)
+
+
+def build_lane_corridor(left_boundary, right_boundary):
+    corridor = np.zeros_like(left_boundary)
+    for row in range(corridor.shape[0]):
+        left_cols = np.flatnonzero(left_boundary[row] > 0)
+        right_cols = np.flatnonzero(right_boundary[row] > 0)
+        if left_cols.size == 0 or right_cols.size == 0:
+            continue
+        left_x = int(np.max(left_cols))
+        right_x = int(np.min(right_cols))
+        if right_x <= left_x:
+            continue
+        corridor[row, left_x:right_x + 1] = 255
+    corridor = cv2.morphologyEx(corridor, cv2.MORPH_CLOSE, np.ones((5, 5), np.uint8))
+    return corridor
+
+
+def extract_igvc_lane_features(frame, road_mask, lane_hint_mask, grid_width_cells, grid_height_cells):
+    hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+    height, width = road_mask.shape
+    roi = np.zeros((height, width), dtype=np.uint8)
+    roi[int(height * 0.45):, :] = 255
+    white_mask = cv2.inRange(hsv, (0, 0, 165), (179, 70, 255))
+    white_mask = cv2.bitwise_and(white_mask, roi)
+    road_support = cv2.dilate(road_mask, np.ones((25, 25), np.uint8), iterations=1)
+    white_mask = cv2.bitwise_and(white_mask, road_support)
+    white_mask = cv2.bitwise_or(white_mask, lane_hint_mask)
+    white_mask = cv2.morphologyEx(white_mask, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
+    white_mask = cv2.dilate(white_mask, np.ones((3, 3), np.uint8), iterations=1)
+
+    src = np.float32([
+        [width * 0.05, height * 0.98],
+        [width * 0.95, height * 0.98],
+        [width * 0.65, height * 0.62],
+        [width * 0.35, height * 0.62],
+    ])
+    dst = np.float32([
+        [0, grid_height_cells - 1],
+        [grid_width_cells - 1, grid_height_cells - 1],
+        [grid_width_cells - 1, 0],
+        [0, 0],
+    ])
+    transform = cv2.getPerspectiveTransform(src, dst)
+    white_bev = cv2.warpPerspective(
+        white_mask, transform, (grid_width_cells, grid_height_cells), flags=cv2.INTER_NEAREST)
+    white_bev = cv2.morphologyEx(white_bev, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
+    white_bev = cv2.dilate(white_bev, np.ones((3, 3), np.uint8), iterations=1)
+
+    half = grid_width_cells // 2
+    left = select_largest_lane_component(white_bev[:, :half])
+    right = select_largest_lane_component(white_bev[:, half:])
+    left_full = np.zeros_like(white_bev)
+    right_full = np.zeros_like(white_bev)
+    left_full[:, :half] = left
+    right_full[:, half:] = right
+    corridor = build_lane_corridor(left_full, right_full)
+    if np.count_nonzero(corridor) == 0:
+        corridor = white_bev.copy()
+    return white_mask, white_bev, corridor
+
+
+def project_nav2(road_mask, lane_hint_mask, lane_corridor, grid_width_cells, grid_height_cells):
     height, width = road_mask.shape
     src = np.float32([
         [width * 0.05, height * 0.98],
@@ -120,7 +201,11 @@ def project_nav2(road_mask, lane_hint_mask, grid_width_cells, grid_height_cells)
         lane_hint_mask, transform, (grid_width_cells, grid_height_cells), flags=cv2.INTER_NEAREST)
     road_bev = cv2.morphologyEx(road_bev, cv2.MORPH_CLOSE, np.ones((5, 5), np.uint8))
     drivable = np.where(road_bev > 0, 255, 0).astype(np.uint8)
+    if np.count_nonzero(lane_corridor) > 0:
+        drivable = cv2.bitwise_and(drivable, cv2.dilate(
+            lane_corridor, np.ones((9, 9), np.uint8), iterations=1))
     drivable = cv2.bitwise_or(drivable, lane_bev)
+    drivable = cv2.morphologyEx(drivable, cv2.MORPH_CLOSE, np.ones((5, 5), np.uint8))
     keepout = np.where(drivable > 0, 0, 255).astype(np.uint8)
     return keepout, drivable
 
@@ -139,16 +224,18 @@ def add_label(image, text):
 
 def make_contact_sheet(rows, output_path):
     rendered_rows = []
-    for original, overlay, road, lane_hint, keepout in rows:
+    for original, overlay, road, lane_hint, igvc_lane_bev, corridor, keepout in rows:
         tiles = []
         for image, label in (
             (original, 'raw input'),
             (overlay, 'segformer + hsv'),
             (cv2.cvtColor(road, cv2.COLOR_GRAY2BGR), 'refined road mask'),
             (cv2.cvtColor(lane_hint, cv2.COLOR_GRAY2BGR), 'lane hint mask'),
+            (cv2.cvtColor(igvc_lane_bev, cv2.COLOR_GRAY2BGR), 'igvc lane bev'),
+            (cv2.cvtColor(corridor, cv2.COLOR_GRAY2BGR), 'igvc corridor'),
             (cv2.cvtColor(keepout, cv2.COLOR_GRAY2BGR), 'nav2 keepout bev'),
         ):
-            tile = cv2.resize(image, (320, 220), interpolation=cv2.INTER_AREA)
+            tile = cv2.resize(image, (280, 200), interpolation=cv2.INTER_AREA)
             add_label(tile, label)
             tiles.append(tile)
         rendered_rows.append(np.hstack(tiles))
@@ -193,15 +280,21 @@ def main():
             sidewalk = binary_mask(class_mask, label2id, 'sidewalk')
             road, lane_hint = refine_masks(frame, road_raw, sidewalk)
             overlay = make_overlay(frame, class_mask, label2id, road, lane_hint)
-            keepout, drivable = project_nav2(road, lane_hint, grid_width_cells, grid_height_cells)
+            igvc_white, igvc_lane_bev, corridor = extract_igvc_lane_features(
+                frame, road, lane_hint, grid_width_cells, grid_height_cells)
+            keepout, drivable = project_nav2(
+                road, lane_hint, corridor, grid_width_cells, grid_height_cells)
 
             stem = image_path.stem
             cv2.imwrite(str(output_dir / f'{stem}_overlay.jpg'), overlay)
             cv2.imwrite(str(output_dir / f'{stem}_road_refined.png'), road)
             cv2.imwrite(str(output_dir / f'{stem}_lane_hint.png'), lane_hint)
+            cv2.imwrite(str(output_dir / f'{stem}_igvc_white.png'), igvc_white)
+            cv2.imwrite(str(output_dir / f'{stem}_igvc_lane_bev.png'), igvc_lane_bev)
+            cv2.imwrite(str(output_dir / f'{stem}_igvc_corridor.png'), corridor)
             cv2.imwrite(str(output_dir / f'{stem}_nav2_keepout.png'), keepout)
             cv2.imwrite(str(output_dir / f'{stem}_nav2_drivable.png'), drivable)
-            rows.append((frame, overlay, road, lane_hint, keepout))
+            rows.append((frame, overlay, road, lane_hint, igvc_lane_bev, corridor, keepout))
 
             unique, counts = np.unique(class_mask, return_counts=True)
             class_counts = {
@@ -213,6 +306,9 @@ def main():
                 'road_pixels_raw': int(np.count_nonzero(road_raw)),
                 'road_pixels_refined': int(np.count_nonzero(road)),
                 'lane_hint_pixels': int(np.count_nonzero(lane_hint)),
+                'igvc_white_pixels': int(np.count_nonzero(igvc_white)),
+                'igvc_lane_bev_pixels': int(np.count_nonzero(igvc_lane_bev)),
+                'igvc_corridor_cells': int(np.count_nonzero(corridor)),
                 'nav2_keepout_cells': int(np.count_nonzero(keepout)),
                 'top_classes': sorted(
                     class_counts.items(), key=lambda item: item[1], reverse=True)[:8],

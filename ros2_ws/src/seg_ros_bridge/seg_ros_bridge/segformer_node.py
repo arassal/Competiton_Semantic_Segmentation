@@ -88,6 +88,12 @@ class SegFormerNode(Node):
             Image, '/seg_ros/segformer/sidewalk_mask', 10)
         self.lane_hint_pub = self.create_publisher(
             Image, '/seg_ros/segformer/lane_hint_mask', 10)
+        self.igvc_white_mask_pub = self.create_publisher(
+            Image, '/seg_ros/segformer/igvc_white_mask', 10)
+        self.igvc_lane_bev_pub = self.create_publisher(
+            Image, '/seg_ros/segformer/igvc_lane_bev', 10)
+        self.igvc_lane_corridor_pub = self.create_publisher(
+            Image, '/seg_ros/segformer/igvc_lane_corridor_mask', 10)
         self.bev_mask_pub = self.create_publisher(
             Image, '/seg_ros/segformer/nav2/bev_keepout_mask', 10)
         self.metadata_pub = self.create_publisher(
@@ -168,10 +174,19 @@ class SegFormerNode(Node):
         sidewalk_mask = self._binary_mask(class_mask, 'sidewalk')
         road_mask, lane_hint_mask = self._refine_masks(
             frame, road_mask_raw, sidewalk_mask)
-        overlay = self._make_overlay(frame, class_mask, road_mask, lane_hint_mask)
+        igvc_white_mask, igvc_lane_bev, igvc_lane_corridor = self._extract_igvc_lane_features(
+            frame,
+            road_mask,
+            lane_hint_mask,
+            frame.shape[1],
+            frame.shape[0],
+        )
+        overlay = self._make_overlay(
+            frame, class_mask, road_mask, lane_hint_mask, igvc_lane_corridor)
         nav2_keepout_mask, nav2_drivable_mask = self._project_nav2_grids(
             road_mask,
             lane_hint_mask,
+            igvc_lane_corridor,
             frame.shape[1],
             frame.shape[0],
         )
@@ -186,6 +201,9 @@ class SegFormerNode(Node):
             road_mask,
             sidewalk_mask,
             lane_hint_mask,
+            igvc_white_mask,
+            igvc_lane_bev,
+            igvc_lane_corridor,
             nav2_keepout_mask,
         )
         self._publish_nav2_grids(msg, nav2_keepout_mask, nav2_drivable_mask)
@@ -196,6 +214,9 @@ class SegFormerNode(Node):
             road_mask,
             sidewalk_mask,
             lane_hint_mask,
+            igvc_white_mask,
+            igvc_lane_bev,
+            igvc_lane_corridor,
             nav2_keepout_mask,
             elapsed_ms,
         )
@@ -267,7 +288,7 @@ class SegFormerNode(Node):
 
         return road_mask, lane_hint_mask
 
-    def _make_overlay(self, frame, class_mask, road_mask, lane_hint_mask):
+    def _make_overlay(self, frame, class_mask, road_mask, lane_hint_mask, igvc_lane_corridor):
         overlay = frame.copy()
         colors = {
             'road': (70, 70, 70),
@@ -286,15 +307,41 @@ class SegFormerNode(Node):
                 color_mask[class_mask == class_id] = color
         color_mask[road_mask > 0] = (80, 80, 80)
         color_mask[lane_hint_mask > 0] = (0, 255, 255)
+        color_mask[igvc_lane_corridor > 0] = (255, 255, 0)
         active = np.any(color_mask != 0, axis=2)
         overlay[active] = cv2.addWeighted(frame, 0.55, color_mask, 0.45, 0)[active]
         return overlay
 
-    def _project_nav2_grids(self, road_mask, lane_hint_mask, width, height):
-        if not self.nav2_publish_grid:
-            empty = np.zeros((self.nav2_grid_height_cells, self.nav2_grid_width_cells), dtype=np.uint8)
-            return empty, empty
+    def _extract_igvc_lane_features(self, frame, road_mask, lane_hint_mask, width, height):
+        hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+        roi = np.zeros((height, width), dtype=np.uint8)
+        roi[int(height * 0.45):, :] = 255
+        white_mask = cv2.inRange(hsv, (0, 0, 165), (179, 70, 255))
+        white_mask = cv2.bitwise_and(white_mask, roi)
+        road_support = cv2.dilate(road_mask, np.ones((25, 25), np.uint8), iterations=1)
+        white_mask = cv2.bitwise_and(white_mask, road_support)
+        white_mask = cv2.bitwise_or(white_mask, lane_hint_mask)
+        white_mask = cv2.morphologyEx(
+            white_mask, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
+        white_mask = cv2.dilate(white_mask, np.ones((3, 3), np.uint8), iterations=1)
 
+        transform = self._nav2_perspective_transform(width, height)
+        white_bev = cv2.warpPerspective(
+            white_mask,
+            transform,
+            (self.nav2_grid_width_cells, self.nav2_grid_height_cells),
+            flags=cv2.INTER_NEAREST,
+        )
+        white_bev = cv2.morphologyEx(
+            white_bev, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
+        white_bev = cv2.dilate(white_bev, np.ones((3, 3), np.uint8), iterations=1)
+        left_boundary, right_boundary = self._select_lane_boundaries(white_bev)
+        corridor = self._build_lane_corridor(left_boundary, right_boundary)
+        if np.count_nonzero(corridor) == 0:
+            corridor = white_bev.copy()
+        return white_mask, white_bev, corridor
+
+    def _nav2_perspective_transform(self, width, height):
         src = np.float32([
             [width * self.nav2_src_bottom_left_x, height * self.nav2_src_bottom_y],
             [width * self.nav2_src_bottom_right_x, height * self.nav2_src_bottom_y],
@@ -307,7 +354,61 @@ class SegFormerNode(Node):
             [self.nav2_grid_width_cells - 1, 0],
             [0, 0],
         ])
-        transform = cv2.getPerspectiveTransform(src, dst)
+        return cv2.getPerspectiveTransform(src, dst)
+
+    def _select_lane_boundaries(self, white_bev):
+        left_half = white_bev[:, : self.nav2_grid_width_cells // 2]
+        right_half = white_bev[:, self.nav2_grid_width_cells // 2 :]
+        left_boundary = self._largest_lane_component(left_half)
+        right_boundary = self._largest_lane_component(right_half)
+        right_full = np.zeros_like(white_bev)
+        left_full = np.zeros_like(white_bev)
+        left_full[:, : self.nav2_grid_width_cells // 2] = left_boundary
+        right_full[:, self.nav2_grid_width_cells // 2 :] = right_boundary
+        return left_full, right_full
+
+    def _largest_lane_component(self, mask):
+        num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(mask, connectivity=8)
+        if num_labels <= 1:
+            return np.zeros_like(mask)
+        best_index = -1
+        best_score = 0
+        for label in range(1, num_labels):
+            area = stats[label, cv2.CC_STAT_AREA]
+            width = stats[label, cv2.CC_STAT_WIDTH]
+            height = stats[label, cv2.CC_STAT_HEIGHT]
+            if area < 8 or height < 6:
+                continue
+            score = area + (height * 2) - width
+            if score > best_score:
+                best_score = score
+                best_index = label
+        if best_index == -1:
+            return np.zeros_like(mask)
+        return np.where(labels == best_index, 255, 0).astype(np.uint8)
+
+    def _build_lane_corridor(self, left_boundary, right_boundary):
+        corridor = np.zeros_like(left_boundary)
+        for row in range(self.nav2_grid_height_cells):
+            left_cols = np.flatnonzero(left_boundary[row] > 0)
+            right_cols = np.flatnonzero(right_boundary[row] > 0)
+            if left_cols.size == 0 or right_cols.size == 0:
+                continue
+            left_x = int(np.max(left_cols))
+            right_x = int(np.min(right_cols))
+            if right_x <= left_x:
+                continue
+            corridor[row, left_x:right_x + 1] = 255
+        corridor = cv2.morphologyEx(
+            corridor, cv2.MORPH_CLOSE, np.ones((5, 5), np.uint8))
+        return corridor
+
+    def _project_nav2_grids(self, road_mask, lane_hint_mask, igvc_lane_corridor, width, height):
+        if not self.nav2_publish_grid:
+            empty = np.zeros((self.nav2_grid_height_cells, self.nav2_grid_width_cells), dtype=np.uint8)
+            return empty, empty
+
+        transform = self._nav2_perspective_transform(width, height)
         road_bev = cv2.warpPerspective(
             road_mask,
             transform,
@@ -326,7 +427,12 @@ class SegFormerNode(Node):
             np.ones((5, 5), np.uint8),
         )
         drivable = np.where(road_bev > 0, 255, 0).astype(np.uint8)
+        if np.count_nonzero(igvc_lane_corridor) > 0:
+            drivable = cv2.bitwise_and(drivable, cv2.dilate(
+                igvc_lane_corridor, np.ones((9, 9), np.uint8), iterations=1))
         drivable = cv2.bitwise_or(drivable, lane_bev)
+        drivable = cv2.morphologyEx(
+            drivable, cv2.MORPH_CLOSE, np.ones((5, 5), np.uint8))
         keepout = np.where(drivable > 0, 0, 100).astype(np.uint8)
         return keepout, drivable
 
@@ -340,6 +446,9 @@ class SegFormerNode(Node):
         road_mask,
         sidewalk_mask,
         lane_hint_mask,
+        igvc_white_mask,
+        igvc_lane_bev,
+        igvc_lane_corridor,
         nav2_keepout_mask,
     ):
         if self.publish_input_image:
@@ -370,6 +479,19 @@ class SegFormerNode(Node):
         lane_hint_msg = self.bridge.cv2_to_imgmsg(lane_hint_mask, encoding='mono8')
         lane_hint_msg.header = source_msg.header
         self.lane_hint_pub.publish(lane_hint_msg)
+
+        igvc_white_msg = self.bridge.cv2_to_imgmsg(igvc_white_mask, encoding='mono8')
+        igvc_white_msg.header = source_msg.header
+        self.igvc_white_mask_pub.publish(igvc_white_msg)
+
+        igvc_bev_msg = self.bridge.cv2_to_imgmsg(igvc_lane_bev, encoding='mono8')
+        igvc_bev_msg.header = source_msg.header
+        self.igvc_lane_bev_pub.publish(igvc_bev_msg)
+
+        igvc_corridor_msg = self.bridge.cv2_to_imgmsg(
+            igvc_lane_corridor, encoding='mono8')
+        igvc_corridor_msg.header = source_msg.header
+        self.igvc_lane_corridor_pub.publish(igvc_corridor_msg)
 
         bev_msg = self.bridge.cv2_to_imgmsg(nav2_keepout_mask, encoding='mono8')
         bev_msg.header = source_msg.header
@@ -406,6 +528,9 @@ class SegFormerNode(Node):
         road_mask,
         sidewalk_mask,
         lane_hint_mask,
+        igvc_white_mask,
+        igvc_lane_bev,
+        igvc_lane_corridor,
         nav2_keepout_mask,
         elapsed_ms,
     ):
@@ -429,6 +554,9 @@ class SegFormerNode(Node):
             'road_pixels': int(np.count_nonzero(road_mask)),
             'sidewalk_pixels': int(np.count_nonzero(sidewalk_mask)),
             'lane_hint_pixels': int(np.count_nonzero(lane_hint_mask)),
+            'igvc_white_pixels': int(np.count_nonzero(igvc_white_mask)),
+            'igvc_lane_bev_pixels': int(np.count_nonzero(igvc_lane_bev)),
+            'igvc_lane_corridor_cells': int(np.count_nonzero(igvc_lane_corridor)),
             'nav2_keepout_cells': int(np.count_nonzero(nav2_keepout_mask == 100)),
             'nav2_grid': {
                 'resolution': self.nav2_grid_resolution,
