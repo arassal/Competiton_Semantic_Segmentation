@@ -24,6 +24,7 @@ What is working in this branch:
 - optional HSV refinement for road fill and lane-paint hinting
 - IGVC-specific white-line extraction and lane corridor generation
 - temporal smoothing for lane corridor and drivable grid outputs
+- lane confidence and planner mode hint topics
 - RViz config showing input, overlay, masks, and Nav2 grids
 - replay node for `/home/alexander/Desktop/img`
 - local Nav2 outputs:
@@ -85,6 +86,8 @@ segformer_node
         +--> /seg_ros/segformer/igvc_white_mask
         +--> /seg_ros/segformer/igvc_lane_bev
         +--> /seg_ros/segformer/igvc_lane_corridor_mask
+        +--> /seg_ros/segformer/lane_detected
+        +--> /seg_ros/segformer/planner_mode_hint
         +--> /seg_ros/segformer/nav2/filter_mask
         +--> /seg_ros/segformer/nav2/drivable_grid
         +--> /seg_ros/segformer/nav2/costmap_filter_info
@@ -118,6 +121,8 @@ Generated summary:
 | `/seg_ros/segformer/igvc_white_mask` | `sensor_msgs/msg/Image` | white-line candidate mask in image space |
 | `/seg_ros/segformer/igvc_lane_bev` | `sensor_msgs/msg/Image` | bird's-eye lane boundary mask |
 | `/seg_ros/segformer/igvc_lane_corridor_mask` | `sensor_msgs/msg/Image` | fused lane corridor in BEV |
+| `/seg_ros/segformer/lane_detected` | `std_msgs/msg/Bool` | lane corridor strong enough to trust |
+| `/seg_ros/segformer/planner_mode_hint` | `std_msgs/msg/String` | `lane_following` or `obstacle_avoidance` |
 | `/seg_ros/segformer/nav2/bev_keepout_mask` | `sensor_msgs/msg/Image` | projected top-down debug image |
 | `/seg_ros/segformer/nav2/filter_mask` | `nav_msgs/msg/OccupancyGrid` | Nav2 keepout filter mask |
 | `/seg_ros/segformer/nav2/drivable_grid` | `nav_msgs/msg/OccupancyGrid` | local drivable-vs-nondrivable grid |

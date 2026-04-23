@@ -10,6 +10,13 @@ This branch publishes a **local keepout mask** for Nav2, not a global map.
 | `/seg_ros/segformer/nav2/drivable_grid` | `nav_msgs/msg/OccupancyGrid` | debug drivable grid |
 | `/seg_ros/segformer/nav2/costmap_filter_info` | `nav2_msgs/msg/CostmapFilterInfo` | filter metadata |
 
+## Lane State Topics
+
+| Topic | Type | Notes |
+|---|---|---|
+| `/seg_ros/segformer/lane_detected` | `std_msgs/msg/Bool` | true when lane corridor confidence is high enough |
+| `/seg_ros/segformer/planner_mode_hint` | `std_msgs/msg/String` | `lane_following` or `obstacle_avoidance` |
+
 ## Grid Convention
 
 - frame: `base_link`

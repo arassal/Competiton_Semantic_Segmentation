@@ -12,7 +12,7 @@ from PIL import Image as PilImage
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
 from sensor_msgs.msg import Image
-from std_msgs.msg import String
+from std_msgs.msg import Bool, String
 from vision_msgs.msg import LabelInfo, VisionClass
 
 
@@ -41,6 +41,10 @@ class SegFormerNode(Node):
         self.declare_parameter('camera_mount_y', 0.0)
         self.declare_parameter('camera_mount_z', 0.75)
         self.declare_parameter('camera_mount_yaw', 0.0)
+        self.declare_parameter('lane_detect_on_threshold', 0.30)
+        self.declare_parameter('lane_detect_off_threshold', 0.18)
+        self.declare_parameter('lane_corridor_target_cells', 220)
+        self.declare_parameter('lane_bev_target_pixels', 140)
         self.declare_parameter('nav2_src_bottom_y', 0.98)
         self.declare_parameter('nav2_src_top_y', 0.62)
         self.declare_parameter('nav2_src_bottom_left_x', 0.05)
@@ -66,6 +70,14 @@ class SegFormerNode(Node):
         self.camera_mount_y = float(self.get_parameter('camera_mount_y').value)
         self.camera_mount_z = float(self.get_parameter('camera_mount_z').value)
         self.camera_mount_yaw = float(self.get_parameter('camera_mount_yaw').value)
+        self.lane_detect_on_threshold = float(
+            self.get_parameter('lane_detect_on_threshold').value)
+        self.lane_detect_off_threshold = float(
+            self.get_parameter('lane_detect_off_threshold').value)
+        self.lane_corridor_target_cells = float(
+            self.get_parameter('lane_corridor_target_cells').value)
+        self.lane_bev_target_pixels = float(
+            self.get_parameter('lane_bev_target_pixels').value)
         self.nav2_src_bottom_y = float(self.get_parameter('nav2_src_bottom_y').value)
         self.nav2_src_top_y = float(self.get_parameter('nav2_src_top_y').value)
         self.nav2_src_bottom_left_x = float(
@@ -90,6 +102,7 @@ class SegFormerNode(Node):
         self.frame_count = 0
         self.prev_lane_corridor = None
         self.prev_nav2_drivable = None
+        self.lane_detected = False
         self.device = self._resolve_device(self.device_name)
         self._load_model()
 
@@ -119,6 +132,10 @@ class SegFormerNode(Node):
             String, '/seg_ros/segformer/metadata', 10)
         self.timing_pub = self.create_publisher(
             String, '/seg_ros/segformer/timing', 10)
+        self.lane_detected_pub = self.create_publisher(
+            Bool, '/seg_ros/segformer/lane_detected', 10)
+        self.mode_hint_pub = self.create_publisher(
+            String, '/seg_ros/segformer/planner_mode_hint', 10)
 
         label_qos = QoSProfile(depth=1)
         label_qos.reliability = ReliabilityPolicy.RELIABLE
@@ -202,6 +219,8 @@ class SegFormerNode(Node):
         )
         igvc_lane_corridor = self._smooth_binary_mask(
             igvc_lane_corridor, 'lane_corridor')
+        lane_confidence, lane_detected = self._estimate_lane_confidence(
+            igvc_lane_bev, igvc_lane_corridor)
         igvc_lane_corridor_image = self._project_bev_to_image(
             igvc_lane_corridor, frame.shape[1], frame.shape[0])
         overlay = self._make_overlay(
@@ -215,6 +234,7 @@ class SegFormerNode(Node):
             road_mask,
             lane_hint_mask,
             igvc_lane_corridor,
+            lane_detected,
             frame.shape[1],
             frame.shape[0],
         )
@@ -238,6 +258,7 @@ class SegFormerNode(Node):
             nav2_keepout_mask,
         )
         self._publish_nav2_grids(msg, nav2_keepout_mask, nav2_drivable_mask)
+        self._publish_lane_state(lane_detected)
         self._publish_metadata(
             msg,
             class_mask,
@@ -249,6 +270,8 @@ class SegFormerNode(Node):
             igvc_lane_bev,
             igvc_lane_corridor,
             nav2_keepout_mask,
+            lane_confidence,
+            lane_detected,
             elapsed_ms,
         )
 
@@ -451,6 +474,18 @@ class SegFormerNode(Node):
             corridor, cv2.MORPH_CLOSE, np.ones((5, 5), np.uint8))
         return corridor
 
+    def _estimate_lane_confidence(self, igvc_lane_bev, igvc_lane_corridor):
+        corridor_cells = float(np.count_nonzero(igvc_lane_corridor))
+        bev_pixels = float(np.count_nonzero(igvc_lane_bev))
+        corridor_score = min(1.0, corridor_cells / max(1.0, self.lane_corridor_target_cells))
+        bev_score = min(1.0, bev_pixels / max(1.0, self.lane_bev_target_pixels))
+        confidence = (0.7 * corridor_score) + (0.3 * bev_score)
+        if self.lane_detected:
+            self.lane_detected = confidence >= self.lane_detect_off_threshold
+        else:
+            self.lane_detected = confidence >= self.lane_detect_on_threshold
+        return confidence, self.lane_detected
+
     def _smooth_binary_mask(self, mask, kind):
         if not self.enable_temporal_smoothing:
             return mask
@@ -471,7 +506,15 @@ class SegFormerNode(Node):
             self.prev_nav2_drivable = smoothed
         return out
 
-    def _project_nav2_grids(self, road_mask, lane_hint_mask, igvc_lane_corridor, width, height):
+    def _project_nav2_grids(
+        self,
+        road_mask,
+        lane_hint_mask,
+        igvc_lane_corridor,
+        lane_detected,
+        width,
+        height,
+    ):
         if not self.nav2_publish_grid:
             empty = np.zeros((self.nav2_grid_height_cells, self.nav2_grid_width_cells), dtype=np.uint8)
             return empty, empty
@@ -495,7 +538,7 @@ class SegFormerNode(Node):
             np.ones((5, 5), np.uint8),
         )
         drivable = np.where(road_bev > 0, 255, 0).astype(np.uint8)
-        if np.count_nonzero(igvc_lane_corridor) > 0:
+        if lane_detected and np.count_nonzero(igvc_lane_corridor) > 0:
             drivable = cv2.bitwise_and(drivable, cv2.dilate(
                 igvc_lane_corridor, np.ones((9, 9), np.uint8), iterations=1))
         drivable = cv2.bitwise_or(drivable, lane_bev)
@@ -588,6 +631,15 @@ class SegFormerNode(Node):
         grid.data = grid_data.flatten().tolist()
         return grid
 
+    def _publish_lane_state(self, lane_detected):
+        lane_msg = Bool()
+        lane_msg.data = bool(lane_detected)
+        self.lane_detected_pub.publish(lane_msg)
+
+        mode_msg = String()
+        mode_msg.data = 'lane_following' if lane_detected else 'obstacle_avoidance'
+        self.mode_hint_pub.publish(mode_msg)
+
     def _publish_metadata(
         self,
         source_msg,
@@ -600,6 +652,8 @@ class SegFormerNode(Node):
         igvc_lane_bev,
         igvc_lane_corridor,
         nav2_keepout_mask,
+        lane_confidence,
+        lane_detected,
         elapsed_ms,
     ):
         counts = {}
@@ -627,6 +681,9 @@ class SegFormerNode(Node):
             'igvc_white_pixels': int(np.count_nonzero(igvc_white_mask)),
             'igvc_lane_bev_pixels': int(np.count_nonzero(igvc_lane_bev)),
             'igvc_lane_corridor_cells': int(np.count_nonzero(igvc_lane_corridor)),
+            'lane_confidence': lane_confidence,
+            'lane_detected': bool(lane_detected),
+            'planner_mode_hint': 'lane_following' if lane_detected else 'obstacle_avoidance',
             'nav2_keepout_cells': int(np.count_nonzero(nav2_keepout_mask == 100)),
             'nav2_grid': {
                 'resolution': self.nav2_grid_resolution,
