@@ -30,6 +30,7 @@ What is working in this branch:
   - `/seg_ros/segformer/nav2/filter_mask`
   - `/seg_ros/segformer/nav2/drivable_grid`
   - `/seg_ros/segformer/nav2/costmap_filter_info`
+- metric BEV ranges and front-camera mount priors for a ZED X forward view
 
 What is intentionally not claimed:
 
@@ -189,6 +190,7 @@ Important boundary:
 - the branch currently publishes a **local keepout grid in `base_link`**
 - this is best suited for **local costmap filtering**
 - a full global Nav2 map pipeline is not included here
+- camera mount values are treated as a **practical prior**, not a final measured calibration
 
 ## Generate Proof Again
 

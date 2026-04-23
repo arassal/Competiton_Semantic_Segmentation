@@ -35,8 +35,12 @@ class SegFormerNode(Node):
         self.declare_parameter('enable_hsv_refinement', True)
         self.declare_parameter('nav2_publish_grid', True)
         self.declare_parameter('nav2_grid_resolution', 0.05)
-        self.declare_parameter('nav2_grid_width_m', 6.0)
-        self.declare_parameter('nav2_grid_length_m', 8.0)
+        self.declare_parameter('nav2_x_range', [0.0, 15.0])
+        self.declare_parameter('nav2_y_range', [-10.0, 10.0])
+        self.declare_parameter('camera_mount_x', 0.35)
+        self.declare_parameter('camera_mount_y', 0.0)
+        self.declare_parameter('camera_mount_z', 0.75)
+        self.declare_parameter('camera_mount_yaw', 0.0)
         self.declare_parameter('nav2_src_bottom_y', 0.98)
         self.declare_parameter('nav2_src_top_y', 0.62)
         self.declare_parameter('nav2_src_bottom_left_x', 0.05)
@@ -56,8 +60,12 @@ class SegFormerNode(Node):
             self.get_parameter('enable_hsv_refinement').value)
         self.nav2_publish_grid = bool(self.get_parameter('nav2_publish_grid').value)
         self.nav2_grid_resolution = float(self.get_parameter('nav2_grid_resolution').value)
-        self.nav2_grid_width_m = float(self.get_parameter('nav2_grid_width_m').value)
-        self.nav2_grid_length_m = float(self.get_parameter('nav2_grid_length_m').value)
+        self.nav2_x_range = [float(v) for v in self.get_parameter('nav2_x_range').value]
+        self.nav2_y_range = [float(v) for v in self.get_parameter('nav2_y_range').value]
+        self.camera_mount_x = float(self.get_parameter('camera_mount_x').value)
+        self.camera_mount_y = float(self.get_parameter('camera_mount_y').value)
+        self.camera_mount_z = float(self.get_parameter('camera_mount_z').value)
+        self.camera_mount_yaw = float(self.get_parameter('camera_mount_yaw').value)
         self.nav2_src_bottom_y = float(self.get_parameter('nav2_src_bottom_y').value)
         self.nav2_src_top_y = float(self.get_parameter('nav2_src_top_y').value)
         self.nav2_src_bottom_left_x = float(
@@ -69,6 +77,10 @@ class SegFormerNode(Node):
         self.enable_temporal_smoothing = bool(
             self.get_parameter('enable_temporal_smoothing').value)
         self.temporal_alpha = float(self.get_parameter('temporal_alpha').value)
+        self.nav2_x_min, self.nav2_x_max = self.nav2_x_range
+        self.nav2_y_min, self.nav2_y_max = self.nav2_y_range
+        self.nav2_grid_width_m = self.nav2_y_max - self.nav2_y_min
+        self.nav2_grid_length_m = self.nav2_x_max - self.nav2_x_min
         self.nav2_grid_width_cells = max(
             1, int(round(self.nav2_grid_width_m / self.nav2_grid_resolution)))
         self.nav2_grid_height_cells = max(
@@ -569,8 +581,8 @@ class SegFormerNode(Node):
         grid.info.resolution = self.nav2_grid_resolution
         grid.info.width = self.nav2_grid_width_cells
         grid.info.height = self.nav2_grid_height_cells
-        grid.info.origin.position.x = 0.0
-        grid.info.origin.position.y = -self.nav2_grid_width_m / 2.0
+        grid.info.origin.position.x = self.nav2_x_min
+        grid.info.origin.position.y = self.nav2_y_min
         grid.info.origin.position.z = 0.0
         grid.info.origin.orientation.w = 1.0
         grid.data = grid_data.flatten().tolist()
@@ -618,8 +630,16 @@ class SegFormerNode(Node):
             'nav2_keepout_cells': int(np.count_nonzero(nav2_keepout_mask == 100)),
             'nav2_grid': {
                 'resolution': self.nav2_grid_resolution,
+                'x_range': self.nav2_x_range,
+                'y_range': self.nav2_y_range,
                 'width_m': self.nav2_grid_width_m,
                 'length_m': self.nav2_grid_length_m,
+            },
+            'camera_prior': {
+                'mount_x': self.camera_mount_x,
+                'mount_y': self.camera_mount_y,
+                'mount_z': self.camera_mount_z,
+                'mount_yaw': self.camera_mount_yaw,
             },
             'class_pixel_counts': counts,
             'timing_ms': elapsed_ms,

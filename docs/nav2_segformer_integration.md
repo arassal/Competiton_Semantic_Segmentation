@@ -13,14 +13,27 @@ This branch publishes a **local keepout mask** for Nav2, not a global map.
 ## Grid Convention
 
 - frame: `base_link`
-- width: configurable, default `6.0 m`
-- length: configurable, default `8.0 m`
+- `x_range`: configurable, default `[0.0, 15.0]`
+- `y_range`: configurable, default `[-10.0, 10.0]`
 - resolution: configurable, default `0.05 m`
 - origin:
-  - `x = 0.0`
-  - `y = -width / 2`
+  - `x = x_range[0]`
+  - `y = y_range[0]`
 
-This means the grid starts at the vehicle and extends forward.
+This means the grid is defined directly in the vehicle frame instead of
+being inferred from width/length only.
+
+## Camera Prior
+
+The branch also carries a front-camera mount prior:
+
+- `camera_mount_x = 0.35`
+- `camera_mount_y = 0.0`
+- `camera_mount_z = 0.75`
+- `camera_mount_yaw = 0.0`
+
+This is treated as a practical initialization for the front ZED X mounting,
+not as a final measured calibration.
 
 ## Projection Method
 
