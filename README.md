@@ -2,12 +2,13 @@
 
 This branch turns the SegFormer experiment into a **ROS 2 Jazzy + RViz + Nav2-compatible local perception demo** for IGVC-style imagery.
 
-It does four things that `main` does not:
+It does five things that `main` does not:
 
 1. runs **SegFormer + HSV refinement** as a separate semantic backend
 2. extracts **IGVC-style white lane boundaries** in BEV
 3. publishes a **local Nav2 keepout mask** as `nav_msgs/msg/OccupancyGrid`
-4. provides a **repeatable RViz demo** using your image set in `/home/alexander/Desktop/img`
+4. stabilizes lane and drivable outputs over time
+5. provides a **repeatable RViz demo** using your image set in `/home/alexander/Desktop/img`
 
 This branch stays separate because it is still an experiment. It is meant to answer one question:
 
@@ -22,6 +23,7 @@ What is working in this branch:
 - ROS 2 image subscriber for SegFormer
 - optional HSV refinement for road fill and lane-paint hinting
 - IGVC-specific white-line extraction and lane corridor generation
+- temporal smoothing for lane corridor and drivable grid outputs
 - RViz config showing input, overlay, masks, and Nav2 grids
 - replay node for `/home/alexander/Desktop/img`
 - local Nav2 outputs:

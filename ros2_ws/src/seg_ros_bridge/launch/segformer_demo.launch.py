@@ -23,6 +23,14 @@ def generate_launch_description():
             default_value='1.0',
         ),
         DeclareLaunchArgument(
+            'enable_temporal_smoothing',
+            default_value='true',
+        ),
+        DeclareLaunchArgument(
+            'temporal_alpha',
+            default_value='0.65',
+        ),
+        DeclareLaunchArgument(
             'use_rviz',
             default_value='true',
         ),
@@ -55,6 +63,8 @@ def generate_launch_description():
                 '-p', 'publish_input_image:=true',
                 '-p', 'enable_hsv_refinement:=true',
                 '-p', 'nav2_publish_grid:=true',
+                '-p', ['enable_temporal_smoothing:=', LaunchConfiguration('enable_temporal_smoothing')],
+                '-p', ['temporal_alpha:=', LaunchConfiguration('temporal_alpha')],
             ],
             output='screen',
         ),

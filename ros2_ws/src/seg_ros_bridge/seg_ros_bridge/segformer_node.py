@@ -43,6 +43,8 @@ class SegFormerNode(Node):
         self.declare_parameter('nav2_src_bottom_right_x', 0.95)
         self.declare_parameter('nav2_src_top_left_x', 0.35)
         self.declare_parameter('nav2_src_top_right_x', 0.65)
+        self.declare_parameter('enable_temporal_smoothing', True)
+        self.declare_parameter('temporal_alpha', 0.65)
 
         self.image_topic = self.get_parameter('image_topic').value
         self.model_id = self.get_parameter('model_id').value
@@ -64,6 +66,9 @@ class SegFormerNode(Node):
             self.get_parameter('nav2_src_bottom_right_x').value)
         self.nav2_src_top_left_x = float(self.get_parameter('nav2_src_top_left_x').value)
         self.nav2_src_top_right_x = float(self.get_parameter('nav2_src_top_right_x').value)
+        self.enable_temporal_smoothing = bool(
+            self.get_parameter('enable_temporal_smoothing').value)
+        self.temporal_alpha = float(self.get_parameter('temporal_alpha').value)
         self.nav2_grid_width_cells = max(
             1, int(round(self.nav2_grid_width_m / self.nav2_grid_resolution)))
         self.nav2_grid_height_cells = max(
@@ -71,6 +76,8 @@ class SegFormerNode(Node):
 
         self.bridge = CvBridge()
         self.frame_count = 0
+        self.prev_lane_corridor = None
+        self.prev_nav2_drivable = None
         self.device = self._resolve_device(self.device_name)
         self._load_model()
 
@@ -181,8 +188,17 @@ class SegFormerNode(Node):
             frame.shape[1],
             frame.shape[0],
         )
+        igvc_lane_corridor = self._smooth_binary_mask(
+            igvc_lane_corridor, 'lane_corridor')
+        igvc_lane_corridor_image = self._project_bev_to_image(
+            igvc_lane_corridor, frame.shape[1], frame.shape[0])
         overlay = self._make_overlay(
-            frame, class_mask, road_mask, lane_hint_mask, igvc_lane_corridor)
+            frame,
+            class_mask,
+            road_mask,
+            lane_hint_mask,
+            igvc_lane_corridor_image,
+        )
         nav2_keepout_mask, nav2_drivable_mask = self._project_nav2_grids(
             road_mask,
             lane_hint_mask,
@@ -190,6 +206,9 @@ class SegFormerNode(Node):
             frame.shape[1],
             frame.shape[0],
         )
+        nav2_drivable_mask = self._smooth_binary_mask(
+            nav2_drivable_mask, 'nav2_drivable')
+        nav2_keepout_mask = np.where(nav2_drivable_mask > 0, 0, 100).astype(np.uint8)
         elapsed_ms = (time.perf_counter() - start) * 1000.0
 
         self._publish_images(
@@ -288,7 +307,14 @@ class SegFormerNode(Node):
 
         return road_mask, lane_hint_mask
 
-    def _make_overlay(self, frame, class_mask, road_mask, lane_hint_mask, igvc_lane_corridor):
+    def _make_overlay(
+        self,
+        frame,
+        class_mask,
+        road_mask,
+        lane_hint_mask,
+        igvc_lane_corridor_image,
+    ):
         overlay = frame.copy()
         colors = {
             'road': (70, 70, 70),
@@ -307,7 +333,7 @@ class SegFormerNode(Node):
                 color_mask[class_mask == class_id] = color
         color_mask[road_mask > 0] = (80, 80, 80)
         color_mask[lane_hint_mask > 0] = (0, 255, 255)
-        color_mask[igvc_lane_corridor > 0] = (255, 255, 0)
+        color_mask[igvc_lane_corridor_image > 0] = (255, 255, 0)
         active = np.any(color_mask != 0, axis=2)
         overlay[active] = cv2.addWeighted(frame, 0.55, color_mask, 0.45, 0)[active]
         return overlay
@@ -356,6 +382,16 @@ class SegFormerNode(Node):
         ])
         return cv2.getPerspectiveTransform(src, dst)
 
+    def _project_bev_to_image(self, bev_mask, width, height):
+        transform = self._nav2_perspective_transform(width, height)
+        inverse = np.linalg.inv(transform)
+        return cv2.warpPerspective(
+            bev_mask,
+            inverse,
+            (width, height),
+            flags=cv2.INTER_NEAREST,
+        )
+
     def _select_lane_boundaries(self, white_bev):
         left_half = white_bev[:, : self.nav2_grid_width_cells // 2]
         right_half = white_bev[:, self.nav2_grid_width_cells // 2 :]
@@ -402,6 +438,26 @@ class SegFormerNode(Node):
         corridor = cv2.morphologyEx(
             corridor, cv2.MORPH_CLOSE, np.ones((5, 5), np.uint8))
         return corridor
+
+    def _smooth_binary_mask(self, mask, kind):
+        if not self.enable_temporal_smoothing:
+            return mask
+        alpha = min(max(self.temporal_alpha, 0.0), 0.98)
+        mask_f = (mask > 0).astype(np.float32)
+        if kind == 'lane_corridor':
+            prev = self.prev_lane_corridor
+        else:
+            prev = self.prev_nav2_drivable
+        if prev is None:
+            smoothed = mask_f
+        else:
+            smoothed = (alpha * prev) + ((1.0 - alpha) * mask_f)
+        out = np.where(smoothed >= 0.45, 255, 0).astype(np.uint8)
+        if kind == 'lane_corridor':
+            self.prev_lane_corridor = smoothed
+        else:
+            self.prev_nav2_drivable = smoothed
+        return out
 
     def _project_nav2_grids(self, road_mask, lane_hint_mask, igvc_lane_corridor, width, height):
         if not self.nav2_publish_grid:
@@ -550,6 +606,8 @@ class SegFormerNode(Node):
             },
             'model_id': self.model_id,
             'hsv_refinement_enabled': self.enable_hsv_refinement,
+            'temporal_smoothing_enabled': self.enable_temporal_smoothing,
+            'temporal_alpha': self.temporal_alpha,
             'road_pixels_raw': int(np.count_nonzero(road_mask_raw)),
             'road_pixels': int(np.count_nonzero(road_mask)),
             'sidewalk_pixels': int(np.count_nonzero(sidewalk_mask)),
