@@ -1,5 +1,6 @@
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, ExecuteProcess
+from launch.conditions import IfCondition
 from launch.substitutions import LaunchConfiguration
 
 
@@ -32,6 +33,20 @@ def generate_launch_description():
         DeclareLaunchArgument('process_every_n', default_value='1'),
         DeclareLaunchArgument('publish_input_image', default_value='true'),
         DeclareLaunchArgument('publish_timing', default_value='true'),
+        DeclareLaunchArgument('enable_hsv_refinement', default_value='true'),
+        DeclareLaunchArgument('nav2_publish_grid', default_value='true'),
+        DeclareLaunchArgument('nav2_grid_resolution', default_value='0.05'),
+        DeclareLaunchArgument('nav2_grid_width_m', default_value='6.0'),
+        DeclareLaunchArgument('nav2_grid_length_m', default_value='8.0'),
+        DeclareLaunchArgument('use_rviz', default_value='true'),
+        DeclareLaunchArgument(
+            'rviz_config',
+            default_value=(
+                '/home/alexander/Desktop/Competiton_Semantic_Segmentation/'
+                'ros2_ws/src/seg_ros_bridge/rviz/segformer.rviz'
+            ),
+            description='RViz config for the SegFormer comparison pipeline.',
+        ),
 
         ExecuteProcess(
             cmd=[
@@ -44,7 +59,21 @@ def generate_launch_description():
                 '-p', ['process_every_n:=', LaunchConfiguration('process_every_n')],
                 '-p', ['publish_input_image:=', LaunchConfiguration('publish_input_image')],
                 '-p', ['publish_timing:=', LaunchConfiguration('publish_timing')],
+                '-p', ['enable_hsv_refinement:=', LaunchConfiguration('enable_hsv_refinement')],
+                '-p', ['nav2_publish_grid:=', LaunchConfiguration('nav2_publish_grid')],
+                '-p', ['nav2_grid_resolution:=', LaunchConfiguration('nav2_grid_resolution')],
+                '-p', ['nav2_grid_width_m:=', LaunchConfiguration('nav2_grid_width_m')],
+                '-p', ['nav2_grid_length_m:=', LaunchConfiguration('nav2_grid_length_m')],
             ],
+            output='screen',
+        ),
+        ExecuteProcess(
+            cmd=[
+                'rviz2',
+                '-d',
+                LaunchConfiguration('rviz_config'),
+            ],
+            condition=IfCondition(LaunchConfiguration('use_rviz')),
             output='screen',
         ),
     ])

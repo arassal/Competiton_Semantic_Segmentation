@@ -135,16 +135,24 @@ HTML = r"""<!doctype html>
         <img id="raw" alt="Raw input">
       </figure>
       <figure>
-        <figcaption>SegFormer semantic overlay</figcaption>
+        <figcaption>SegFormer + HSV overlay</figcaption>
         <img id="overlay" alt="SegFormer overlay">
       </figure>
       <figure>
-        <figcaption>Road mask</figcaption>
+        <figcaption>Road mask raw</figcaption>
+        <img id="roadRaw" alt="Raw road mask">
+      </figure>
+      <figure>
+        <figcaption>Road mask refined</figcaption>
         <img id="road" alt="Road mask">
       </figure>
       <figure>
         <figcaption>Sidewalk mask</figcaption>
         <img id="sidewalk" alt="Sidewalk mask">
+      </figure>
+      <figure>
+        <figcaption>Lane hint mask</figcaption>
+        <img id="laneHint" alt="Lane hint mask">
       </figure>
     </div>
     <pre id="metadata">Select an image and run SegFormer.</pre>
@@ -156,8 +164,10 @@ HTML = r"""<!doctype html>
     const statusEl = document.getElementById('status');
     const rawEl = document.getElementById('raw');
     const overlayEl = document.getElementById('overlay');
+    const roadRawEl = document.getElementById('roadRaw');
     const roadEl = document.getElementById('road');
     const sidewalkEl = document.getElementById('sidewalk');
+    const laneHintEl = document.getElementById('laneHint');
     const metadataEl = document.getElementById('metadata');
 
     function setStatus(text) {
@@ -173,8 +183,10 @@ HTML = r"""<!doctype html>
       select.value = String(index);
       rawEl.src = `/image?index=${index}&t=${Date.now()}`;
       overlayEl.removeAttribute('src');
+      roadRawEl.removeAttribute('src');
       roadEl.removeAttribute('src');
       sidewalkEl.removeAttribute('src');
+      laneHintEl.removeAttribute('src');
       metadataEl.textContent = 'Segmentation not run for this selection yet.';
       setStatus(`Selected ${current().name}`);
     }
@@ -208,8 +220,10 @@ HTML = r"""<!doctype html>
           throw new Error(data.error || 'Segmentation failed');
         }
         overlayEl.src = data.overlay;
+        roadRawEl.src = data.road_mask_raw;
         roadEl.src = data.road_mask;
         sidewalkEl.src = data.sidewalk_mask;
+        laneHintEl.src = data.lane_hint_mask;
         metadataEl.textContent = JSON.stringify(data.metadata, null, 2);
         setStatus(`Done in ${data.metadata.timing_ms.toFixed(1)} ms`);
       } catch (err) {
@@ -249,6 +263,8 @@ def parse_args():
     parser.add_argument('--port', type=int, default=7861)
     parser.add_argument('--model-id', default=DEFAULT_MODEL_ID)
     parser.add_argument('--device', default='cpu')
+    parser.add_argument('--enable-hsv-refinement', action='store_true', default=True)
+    parser.add_argument('--disable-hsv-refinement', action='store_false', dest='enable_hsv_refinement')
     return parser.parse_args()
 
 
@@ -270,9 +286,10 @@ def encode_image(image, extension='.jpg'):
 
 
 class SegFormerRunner:
-    def __init__(self, model_id, device):
+    def __init__(self, model_id, device, enable_hsv_refinement):
         self.model_id = model_id
         self.device = torch.device(device if device != 'cpu' else 'cpu')
+        self.enable_hsv_refinement = enable_hsv_refinement
         self.processor = SegformerImageProcessor.from_pretrained(model_id)
         self.model = SegformerForSemanticSegmentation.from_pretrained(model_id).to(self.device)
         self.model.eval()
@@ -298,9 +315,10 @@ class SegFormerRunner:
             )
             class_mask = logits.argmax(dim=1)[0].cpu().numpy().astype(np.uint8)
         elapsed_ms = (time.perf_counter() - start) * 1000.0
-        road = self._binary_mask(class_mask, 'road')
+        road_raw = self._binary_mask(class_mask, 'road')
         sidewalk = self._binary_mask(class_mask, 'sidewalk')
-        overlay = self._overlay(frame, class_mask)
+        road, lane_hint = self._refine_masks(frame, road_raw, sidewalk)
+        overlay = self._overlay(frame, class_mask, road, lane_hint)
         unique, counts = np.unique(class_mask, return_counts=True)
         class_counts = {
             self.id2label.get(int(class_id), str(class_id)): int(count)
@@ -309,13 +327,18 @@ class SegFormerRunner:
         top_classes = sorted(class_counts.items(), key=lambda item: item[1], reverse=True)[:8]
         return {
             'overlay': encode_image(overlay),
+            'road_mask_raw': encode_image(road_raw, '.png'),
             'road_mask': encode_image(road, '.png'),
             'sidewalk_mask': encode_image(sidewalk, '.png'),
+            'lane_hint_mask': encode_image(lane_hint, '.png'),
             'metadata': {
                 'image': str(image_path),
                 'model_id': self.model_id,
+                'hsv_refinement_enabled': self.enable_hsv_refinement,
+                'road_pixels_raw': int(np.count_nonzero(road_raw)),
                 'road_pixels': int(np.count_nonzero(road)),
                 'sidewalk_pixels': int(np.count_nonzero(sidewalk)),
+                'lane_hint_pixels': int(np.count_nonzero(lane_hint)),
                 'top_classes': top_classes,
                 'timing_ms': elapsed_ms,
                 'yolo_used': False,
@@ -328,7 +351,38 @@ class SegFormerRunner:
             return np.zeros(class_mask.shape, dtype=np.uint8)
         return (class_mask == class_id).astype(np.uint8) * 255
 
-    def _overlay(self, frame, class_mask):
+    def _refine_masks(self, frame, road_raw, sidewalk):
+        if not self.enable_hsv_refinement:
+            return road_raw, np.zeros_like(road_raw)
+
+        hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+        height, width = road_raw.shape
+        roi = np.zeros((height, width), dtype=np.uint8)
+        roi[int(height * 0.35):, :] = 255
+
+        asphalt = cv2.inRange(hsv, (0, 0, 35), (179, 80, 185))
+        white = cv2.inRange(hsv, (0, 0, 180), (179, 55, 255))
+        yellow = cv2.inRange(hsv, (12, 55, 110), (42, 255, 255))
+        lane_hint = cv2.bitwise_or(white, yellow)
+
+        kernel_large = np.ones((21, 21), np.uint8)
+        kernel_small = np.ones((5, 5), np.uint8)
+        road_neighborhood = cv2.dilate(road_raw, kernel_large, iterations=1)
+        asphalt_support = cv2.bitwise_and(asphalt, road_neighborhood)
+        asphalt_support = cv2.bitwise_and(asphalt_support, roi)
+        asphalt_support = cv2.bitwise_and(asphalt_support, cv2.bitwise_not(sidewalk))
+
+        road = cv2.bitwise_or(road_raw, asphalt_support)
+        road = cv2.morphologyEx(road, cv2.MORPH_CLOSE, kernel_large)
+        road = cv2.morphologyEx(road, cv2.MORPH_OPEN, kernel_small)
+
+        lane_hint = cv2.bitwise_and(lane_hint, roi)
+        lane_hint = cv2.bitwise_and(lane_hint, cv2.dilate(road, kernel_large, iterations=1))
+        lane_hint = cv2.morphologyEx(lane_hint, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
+        lane_hint = cv2.dilate(lane_hint, kernel_small, iterations=1)
+        return road, lane_hint
+
+    def _overlay(self, frame, class_mask, road_mask, lane_hint):
         colors = {
             'road': (70, 70, 70),
             'sidewalk': (120, 120, 120),
@@ -347,6 +401,8 @@ class SegFormerRunner:
             class_id = self.label2id.get(label)
             if class_id is not None:
                 color_mask[class_mask == class_id] = color
+        color_mask[road_mask > 0] = (80, 80, 80)
+        color_mask[lane_hint > 0] = (0, 255, 255)
         active = np.any(color_mask != 0, axis=2)
         overlay = frame.copy()
         blended = cv2.addWeighted(frame, 0.55, color_mask, 0.45, 0)
@@ -411,7 +467,7 @@ def main():
     if not images:
         raise RuntimeError(f'No images found in {args.image_dir}')
     print(f'Loading SegFormer model: {args.model_id}')
-    runner = SegFormerRunner(args.model_id, args.device)
+    runner = SegFormerRunner(args.model_id, args.device, args.enable_hsv_refinement)
     server = ThreadingHTTPServer((args.host, args.port), make_handler(images, runner))
     print(f'Serving {len(images)} images from {args.image_dir}')
     print(f'Open http://{args.host}:{args.port}')

@@ -6,6 +6,8 @@ import numpy as np
 import rclpy
 import torch
 from cv_bridge import CvBridge
+from nav2_msgs.msg import CostmapFilterInfo
+from nav_msgs.msg import OccupancyGrid
 from PIL import Image as PilImage
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
@@ -30,6 +32,17 @@ class SegFormerNode(Node):
         self.declare_parameter('process_every_n', 1)
         self.declare_parameter('publish_input_image', True)
         self.declare_parameter('publish_timing', True)
+        self.declare_parameter('enable_hsv_refinement', True)
+        self.declare_parameter('nav2_publish_grid', True)
+        self.declare_parameter('nav2_grid_resolution', 0.05)
+        self.declare_parameter('nav2_grid_width_m', 6.0)
+        self.declare_parameter('nav2_grid_length_m', 8.0)
+        self.declare_parameter('nav2_src_bottom_y', 0.98)
+        self.declare_parameter('nav2_src_top_y', 0.62)
+        self.declare_parameter('nav2_src_bottom_left_x', 0.05)
+        self.declare_parameter('nav2_src_bottom_right_x', 0.95)
+        self.declare_parameter('nav2_src_top_left_x', 0.35)
+        self.declare_parameter('nav2_src_top_right_x', 0.65)
 
         self.image_topic = self.get_parameter('image_topic').value
         self.model_id = self.get_parameter('model_id').value
@@ -37,6 +50,24 @@ class SegFormerNode(Node):
         self.process_every_n = max(1, int(self.get_parameter('process_every_n').value))
         self.publish_input_image = bool(self.get_parameter('publish_input_image').value)
         self.publish_timing = bool(self.get_parameter('publish_timing').value)
+        self.enable_hsv_refinement = bool(
+            self.get_parameter('enable_hsv_refinement').value)
+        self.nav2_publish_grid = bool(self.get_parameter('nav2_publish_grid').value)
+        self.nav2_grid_resolution = float(self.get_parameter('nav2_grid_resolution').value)
+        self.nav2_grid_width_m = float(self.get_parameter('nav2_grid_width_m').value)
+        self.nav2_grid_length_m = float(self.get_parameter('nav2_grid_length_m').value)
+        self.nav2_src_bottom_y = float(self.get_parameter('nav2_src_bottom_y').value)
+        self.nav2_src_top_y = float(self.get_parameter('nav2_src_top_y').value)
+        self.nav2_src_bottom_left_x = float(
+            self.get_parameter('nav2_src_bottom_left_x').value)
+        self.nav2_src_bottom_right_x = float(
+            self.get_parameter('nav2_src_bottom_right_x').value)
+        self.nav2_src_top_left_x = float(self.get_parameter('nav2_src_top_left_x').value)
+        self.nav2_src_top_right_x = float(self.get_parameter('nav2_src_top_right_x').value)
+        self.nav2_grid_width_cells = max(
+            1, int(round(self.nav2_grid_width_m / self.nav2_grid_resolution)))
+        self.nav2_grid_height_cells = max(
+            1, int(round(self.nav2_grid_length_m / self.nav2_grid_resolution)))
 
         self.bridge = CvBridge()
         self.frame_count = 0
@@ -49,10 +80,16 @@ class SegFormerNode(Node):
             Image, '/seg_ros/segformer/overlay_image', 10)
         self.class_mask_pub = self.create_publisher(
             Image, '/seg_ros/segformer/class_mask', 10)
+        self.road_mask_raw_pub = self.create_publisher(
+            Image, '/seg_ros/segformer/road_mask_raw', 10)
         self.road_mask_pub = self.create_publisher(
             Image, '/seg_ros/segformer/road_mask', 10)
         self.sidewalk_mask_pub = self.create_publisher(
             Image, '/seg_ros/segformer/sidewalk_mask', 10)
+        self.lane_hint_pub = self.create_publisher(
+            Image, '/seg_ros/segformer/lane_hint_mask', 10)
+        self.bev_mask_pub = self.create_publisher(
+            Image, '/seg_ros/segformer/nav2/bev_keepout_mask', 10)
         self.metadata_pub = self.create_publisher(
             String, '/seg_ros/segformer/metadata', 10)
         self.timing_pub = self.create_publisher(
@@ -63,9 +100,22 @@ class SegFormerNode(Node):
         label_qos.durability = DurabilityPolicy.TRANSIENT_LOCAL
         self.label_pub = self.create_publisher(
             LabelInfo, '/seg_ros/segformer/label_info', label_qos)
+        nav2_qos = QoSProfile(depth=1)
+        nav2_qos.reliability = ReliabilityPolicy.RELIABLE
+        nav2_qos.durability = DurabilityPolicy.TRANSIENT_LOCAL
+        self.nav2_mask_pub = self.create_publisher(
+            OccupancyGrid, '/seg_ros/segformer/nav2/filter_mask', nav2_qos)
+        self.nav2_drivable_pub = self.create_publisher(
+            OccupancyGrid, '/seg_ros/segformer/nav2/drivable_grid', nav2_qos)
+        self.nav2_filter_info_pub = self.create_publisher(
+            CostmapFilterInfo,
+            '/seg_ros/segformer/nav2/costmap_filter_info',
+            nav2_qos,
+        )
 
         self.sub = self.create_subscription(Image, self.image_topic, self._image_cb, 10)
         self._publish_label_info()
+        self._publish_filter_info()
         self.get_logger().info(f'Loaded SegFormer model: {self.model_id}')
         self.get_logger().info(f'Subscribed to image topic: {self.image_topic}')
 
@@ -114,13 +164,41 @@ class SegFormerNode(Node):
             self.get_logger().warning(f'SegFormer inference failed: {exc}')
             return
 
-        road_mask = self._binary_mask(class_mask, 'road')
+        road_mask_raw = self._binary_mask(class_mask, 'road')
         sidewalk_mask = self._binary_mask(class_mask, 'sidewalk')
-        overlay = self._make_overlay(frame, class_mask)
+        road_mask, lane_hint_mask = self._refine_masks(
+            frame, road_mask_raw, sidewalk_mask)
+        overlay = self._make_overlay(frame, class_mask, road_mask, lane_hint_mask)
+        nav2_keepout_mask, nav2_drivable_mask = self._project_nav2_grids(
+            road_mask,
+            lane_hint_mask,
+            frame.shape[1],
+            frame.shape[0],
+        )
         elapsed_ms = (time.perf_counter() - start) * 1000.0
 
-        self._publish_images(msg, frame, overlay, class_mask, road_mask, sidewalk_mask)
-        self._publish_metadata(msg, class_mask, road_mask, sidewalk_mask, elapsed_ms)
+        self._publish_images(
+            msg,
+            frame,
+            overlay,
+            class_mask,
+            road_mask_raw,
+            road_mask,
+            sidewalk_mask,
+            lane_hint_mask,
+            nav2_keepout_mask,
+        )
+        self._publish_nav2_grids(msg, nav2_keepout_mask, nav2_drivable_mask)
+        self._publish_metadata(
+            msg,
+            class_mask,
+            road_mask_raw,
+            road_mask,
+            sidewalk_mask,
+            lane_hint_mask,
+            nav2_keepout_mask,
+            elapsed_ms,
+        )
 
     def _infer(self, frame_bgr):
         frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
@@ -146,7 +224,50 @@ class SegFormerNode(Node):
             return np.zeros(class_mask.shape, dtype=np.uint8)
         return (class_mask == class_id).astype(np.uint8) * 255
 
-    def _make_overlay(self, frame, class_mask):
+    def _refine_masks(self, frame, road_mask_raw, sidewalk_mask):
+        if not self.enable_hsv_refinement:
+            return road_mask_raw, np.zeros_like(road_mask_raw)
+
+        hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+        height, width = road_mask_raw.shape
+        roi = np.zeros((height, width), dtype=np.uint8)
+        roi[int(height * 0.35):, :] = 255
+
+        asphalt_mask = cv2.inRange(hsv, (0, 0, 35), (179, 80, 185))
+        white_mask = cv2.inRange(hsv, (0, 0, 180), (179, 55, 255))
+        yellow_mask = cv2.inRange(hsv, (12, 55, 110), (42, 255, 255))
+        lane_hint_mask = cv2.bitwise_or(white_mask, yellow_mask)
+
+        kernel_large = np.ones((21, 21), np.uint8)
+        kernel_small = np.ones((5, 5), np.uint8)
+        road_neighborhood = cv2.dilate(road_mask_raw, kernel_large, iterations=1)
+
+        asphalt_support = cv2.bitwise_and(asphalt_mask, road_neighborhood)
+        asphalt_support = cv2.bitwise_and(asphalt_support, roi)
+        asphalt_support = cv2.bitwise_and(
+            asphalt_support,
+            cv2.bitwise_not(sidewalk_mask),
+        )
+
+        road_mask = cv2.bitwise_or(road_mask_raw, asphalt_support)
+        road_mask = cv2.morphologyEx(road_mask, cv2.MORPH_CLOSE, kernel_large)
+        road_mask = cv2.morphologyEx(road_mask, cv2.MORPH_OPEN, kernel_small)
+
+        lane_hint_mask = cv2.bitwise_and(lane_hint_mask, roi)
+        lane_hint_mask = cv2.bitwise_and(
+            lane_hint_mask,
+            cv2.dilate(road_mask, kernel_large, iterations=1),
+        )
+        lane_hint_mask = cv2.morphologyEx(
+            lane_hint_mask,
+            cv2.MORPH_OPEN,
+            np.ones((3, 3), np.uint8),
+        )
+        lane_hint_mask = cv2.dilate(lane_hint_mask, kernel_small, iterations=1)
+
+        return road_mask, lane_hint_mask
+
+    def _make_overlay(self, frame, class_mask, road_mask, lane_hint_mask):
         overlay = frame.copy()
         colors = {
             'road': (70, 70, 70),
@@ -163,11 +284,64 @@ class SegFormerNode(Node):
             class_id = self.label2id.get(label)
             if class_id is not None:
                 color_mask[class_mask == class_id] = color
+        color_mask[road_mask > 0] = (80, 80, 80)
+        color_mask[lane_hint_mask > 0] = (0, 255, 255)
         active = np.any(color_mask != 0, axis=2)
         overlay[active] = cv2.addWeighted(frame, 0.55, color_mask, 0.45, 0)[active]
         return overlay
 
-    def _publish_images(self, source_msg, frame, overlay, class_mask, road_mask, sidewalk_mask):
+    def _project_nav2_grids(self, road_mask, lane_hint_mask, width, height):
+        if not self.nav2_publish_grid:
+            empty = np.zeros((self.nav2_grid_height_cells, self.nav2_grid_width_cells), dtype=np.uint8)
+            return empty, empty
+
+        src = np.float32([
+            [width * self.nav2_src_bottom_left_x, height * self.nav2_src_bottom_y],
+            [width * self.nav2_src_bottom_right_x, height * self.nav2_src_bottom_y],
+            [width * self.nav2_src_top_right_x, height * self.nav2_src_top_y],
+            [width * self.nav2_src_top_left_x, height * self.nav2_src_top_y],
+        ])
+        dst = np.float32([
+            [0, self.nav2_grid_height_cells - 1],
+            [self.nav2_grid_width_cells - 1, self.nav2_grid_height_cells - 1],
+            [self.nav2_grid_width_cells - 1, 0],
+            [0, 0],
+        ])
+        transform = cv2.getPerspectiveTransform(src, dst)
+        road_bev = cv2.warpPerspective(
+            road_mask,
+            transform,
+            (self.nav2_grid_width_cells, self.nav2_grid_height_cells),
+            flags=cv2.INTER_NEAREST,
+        )
+        lane_bev = cv2.warpPerspective(
+            lane_hint_mask,
+            transform,
+            (self.nav2_grid_width_cells, self.nav2_grid_height_cells),
+            flags=cv2.INTER_NEAREST,
+        )
+        road_bev = cv2.morphologyEx(
+            road_bev,
+            cv2.MORPH_CLOSE,
+            np.ones((5, 5), np.uint8),
+        )
+        drivable = np.where(road_bev > 0, 255, 0).astype(np.uint8)
+        drivable = cv2.bitwise_or(drivable, lane_bev)
+        keepout = np.where(drivable > 0, 0, 100).astype(np.uint8)
+        return keepout, drivable
+
+    def _publish_images(
+        self,
+        source_msg,
+        frame,
+        overlay,
+        class_mask,
+        road_mask_raw,
+        road_mask,
+        sidewalk_mask,
+        lane_hint_mask,
+        nav2_keepout_mask,
+    ):
         if self.publish_input_image:
             input_msg = self.bridge.cv2_to_imgmsg(frame, encoding='bgr8')
             input_msg.header = source_msg.header
@@ -181,6 +355,10 @@ class SegFormerNode(Node):
         class_msg.header = source_msg.header
         self.class_mask_pub.publish(class_msg)
 
+        road_raw_msg = self.bridge.cv2_to_imgmsg(road_mask_raw, encoding='mono8')
+        road_raw_msg.header = source_msg.header
+        self.road_mask_raw_pub.publish(road_raw_msg)
+
         road_msg = self.bridge.cv2_to_imgmsg(road_mask, encoding='mono8')
         road_msg.header = source_msg.header
         self.road_mask_pub.publish(road_msg)
@@ -189,7 +367,48 @@ class SegFormerNode(Node):
         sidewalk_msg.header = source_msg.header
         self.sidewalk_mask_pub.publish(sidewalk_msg)
 
-    def _publish_metadata(self, source_msg, class_mask, road_mask, sidewalk_mask, elapsed_ms):
+        lane_hint_msg = self.bridge.cv2_to_imgmsg(lane_hint_mask, encoding='mono8')
+        lane_hint_msg.header = source_msg.header
+        self.lane_hint_pub.publish(lane_hint_msg)
+
+        bev_msg = self.bridge.cv2_to_imgmsg(nav2_keepout_mask, encoding='mono8')
+        bev_msg.header = source_msg.header
+        self.bev_mask_pub.publish(bev_msg)
+
+    def _publish_nav2_grids(self, source_msg, keepout_mask, drivable_mask):
+        if not self.nav2_publish_grid:
+            return
+        keepout_msg = self._build_grid_message(source_msg, keepout_mask.astype(np.int8))
+        drivable_grid = np.where(drivable_mask > 0, 0, 100).astype(np.int8)
+        drivable_msg = self._build_grid_message(source_msg, drivable_grid)
+        self.nav2_mask_pub.publish(keepout_msg)
+        self.nav2_drivable_pub.publish(drivable_msg)
+
+    def _build_grid_message(self, source_msg, grid_data):
+        grid = OccupancyGrid()
+        grid.header.stamp = source_msg.header.stamp
+        grid.header.frame_id = 'base_link'
+        grid.info.resolution = self.nav2_grid_resolution
+        grid.info.width = self.nav2_grid_width_cells
+        grid.info.height = self.nav2_grid_height_cells
+        grid.info.origin.position.x = 0.0
+        grid.info.origin.position.y = -self.nav2_grid_width_m / 2.0
+        grid.info.origin.position.z = 0.0
+        grid.info.origin.orientation.w = 1.0
+        grid.data = grid_data.flatten().tolist()
+        return grid
+
+    def _publish_metadata(
+        self,
+        source_msg,
+        class_mask,
+        road_mask_raw,
+        road_mask,
+        sidewalk_mask,
+        lane_hint_mask,
+        nav2_keepout_mask,
+        elapsed_ms,
+    ):
         counts = {}
         unique, pixels = np.unique(class_mask, return_counts=True)
         for class_id, count in zip(unique.tolist(), pixels.tolist()):
@@ -205,8 +424,17 @@ class SegFormerNode(Node):
                 'frame_id': source_msg.header.frame_id,
             },
             'model_id': self.model_id,
+            'hsv_refinement_enabled': self.enable_hsv_refinement,
+            'road_pixels_raw': int(np.count_nonzero(road_mask_raw)),
             'road_pixels': int(np.count_nonzero(road_mask)),
             'sidewalk_pixels': int(np.count_nonzero(sidewalk_mask)),
+            'lane_hint_pixels': int(np.count_nonzero(lane_hint_mask)),
+            'nav2_keepout_cells': int(np.count_nonzero(nav2_keepout_mask == 100)),
+            'nav2_grid': {
+                'resolution': self.nav2_grid_resolution,
+                'width_m': self.nav2_grid_width_m,
+                'length_m': self.nav2_grid_length_m,
+            },
             'class_pixel_counts': counts,
             'timing_ms': elapsed_ms,
         }
@@ -234,6 +462,18 @@ class SegFormerNode(Node):
             for class_id, label in sorted(self.id2label.items())
         ]
         self.label_pub.publish(msg)
+
+    def _publish_filter_info(self):
+        if not self.nav2_publish_grid:
+            return
+        msg = CostmapFilterInfo()
+        msg.header.stamp = self.get_clock().now().to_msg()
+        msg.header.frame_id = 'base_link'
+        msg.type = 0
+        msg.filter_mask_topic = '/seg_ros/segformer/nav2/filter_mask'
+        msg.base = 0.0
+        msg.multiplier = 1.0
+        self.nav2_filter_info_pub.publish(msg)
 
 
 def main(args=None):

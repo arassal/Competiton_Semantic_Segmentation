@@ -13,6 +13,7 @@ setup(
         ('share/ament_index/resource_index/packages', ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
         ('share/' + package_name + '/launch', glob(join('launch', '*.launch.py'))),
+        ('share/' + package_name + '/rviz', glob(join('rviz', '*.rviz'))),
     ],
     install_requires=['setuptools'],
     zip_safe=True,
@@ -28,6 +29,7 @@ setup(
             'live_perception_node = seg_ros_bridge.live_perception_node:main',
             'zed_image_recorder_node = seg_ros_bridge.zed_image_recorder_node:main',
             'segformer_node = seg_ros_bridge.segformer_node:main',
+            'image_replay_node = seg_ros_bridge.image_replay_node:main',
         ],
     },
 )

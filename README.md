@@ -1,137 +1,118 @@
-# Competiton Semantic Segmentation: SegFormer Branch
+# Competiton Semantic Segmentation: Nav2 SegFormer Branch
 
-ROS 2 Jazzy perception branch for testing **SegFormer** as an alternative semantic segmentation backend on ZED X camera images.
+This branch turns the SegFormer experiment into a **ROS 2 Jazzy + RViz + Nav2-compatible local perception demo** for IGVC-style imagery.
 
-This branch is intentionally separate from `main`. The stable `main` branch uses YOLOPv2 for drivable/lane masks plus Roboflow YOLOv8 for cones and objects. This branch keeps that working pipeline available, but makes SegFormer the front-page experiment so the two branches can be compared clearly.
+It does three things that `main` does not:
 
-> Repository name intentionally follows the requested spelling: `Competiton_Semantic_Segmentation`.
+1. runs **SegFormer + HSV refinement** as a separate semantic backend
+2. publishes a **local Nav2 keepout mask** as `nav_msgs/msg/OccupancyGrid`
+3. provides a **repeatable RViz demo** using your image set in `/home/alexander/Desktop/img`
 
-## Branch Purpose
-
-| Question | Answer |
-|---|---|
-| Is SegFormer ROS-compatible here? | Yes. `segformer_node` subscribes to ROS images and publishes ROS masks, overlays, labels, metadata, and timing. |
-| Is SegFormer replacing YOLOPv2? | No. This branch is for comparison only. |
-| Does SegFormer detect traffic cones? | No. The Cityscapes SegFormer model does not have a traffic-cone class. |
-| Does SegFormer detect lane lines? | No direct lane-line class in the Cityscapes model. |
-| What might SegFormer improve? | Road/sidewalk/general scene semantic understanding for future semantic costmap work. |
-| Should this be merged as default? | Not until ZED X validation proves it is better for the actual robot task. |
-
-## SegFormer Architecture
+This branch stays separate because it is still an experiment. It is meant to answer one question:
 
 ```text
-ZED X image topic
-  /zed/zed_node/rgb/color/rect/image
+Can SegFormer produce a usable local drivable / keepout representation for Nav2 on IGVC-style camera imagery?
+```
+
+## Current Status
+
+What is working in this branch:
+
+- ROS 2 image subscriber for SegFormer
+- optional HSV refinement for road fill and lane-paint hinting
+- RViz config showing input, overlay, masks, and Nav2 grids
+- replay node for `/home/alexander/Desktop/img`
+- local Nav2 outputs:
+  - `/seg_ros/segformer/nav2/filter_mask`
+  - `/seg_ros/segformer/nav2/drivable_grid`
+  - `/seg_ros/segformer/nav2/costmap_filter_info`
+
+What is intentionally not claimed:
+
+- this is **not** a full IGVC winner stack
+- this is **not** a complete replacement for object detection, stop signs, pedestrians, or potholes
+- the Nav2 mask is a **local projected keepout grid**, not a full global planner map
+
+## IGVC Relevance
+
+From the official 2026 IGVC rules, the project needs to handle:
+
+- white lane boundaries on asphalt
+- obstacles and barrels
+- potholes
+- pedestrians
+- stop signs
+- lane keeping and lane changes
+- planner-safe outputs
+
+SegFormer alone does not solve all of that. This branch focuses on the part it can honestly help with:
+
+```text
+camera image
+-> semantic road understanding
+-> road refinement + lane-paint hints
+-> local keepout/drivable grid
+-> Nav2-compatible messages
+```
+
+Sources:
+
+- http://www.igvc.org/
+- http://www.igvc.org/2026rules.pdf
+- http://www.igvc.org/reports.htm
+
+## Runtime Architecture
+
+```text
+image_replay_node or ZED X topic
         |
         v
 segformer_node
   nvidia/segformer-b0-finetuned-cityscapes-512-1024
         |
-        v
-ROS 2 outputs
-  /seg_ros/segformer/class_mask
-  /seg_ros/segformer/road_mask
-  /seg_ros/segformer/sidewalk_mask
-  /seg_ros/segformer/overlay_image
-  /seg_ros/segformer/label_info
-  /seg_ros/segformer/metadata
-  /seg_ros/segformer/timing
+        +--> /seg_ros/segformer/overlay_image
+        +--> /seg_ros/segformer/road_mask_raw
+        +--> /seg_ros/segformer/road_mask
+        +--> /seg_ros/segformer/sidewalk_mask
+        +--> /seg_ros/segformer/lane_hint_mask
+        +--> /seg_ros/segformer/nav2/filter_mask
+        +--> /seg_ros/segformer/nav2/drivable_grid
+        +--> /seg_ros/segformer/nav2/costmap_filter_info
 ```
 
-## SegFormer Proof
+## Proof From `/home/alexander/Desktop/img`
 
-The proof below uses dashcam-style images from the car-view YOLOPv2 demo set, but renders **SegFormer only**. No YOLO model is used for these outputs.
+The contact sheet below was generated directly from your image folder:
 
 ```text
-input image | SegFormer semantic overlay | road mask | sidewalk mask
+raw input | segformer + hsv | refined road mask | lane hint mask | nav2 keepout bev
 ```
 
-![SegFormer dashcam proof](proof/segformer_dashcam/segformer_dashcam_contact_sheet.jpg)
+![SegFormer Nav2 proof](proof/segformer_nav2_igvc/segformer_nav2_contact_sheet.jpg)
 
-The proof below uses the same road/cone source image used by the `main` branch, but renders the SegFormer Cityscapes semantic output instead.
+Generated summary:
 
-![SegFormer Cityscapes proof](proof/segformer/segformer_contact_sheet.jpg)
+- [summary json](proof/segformer_nav2_igvc/segformer_nav2_summary.json)
 
-Single SegFormer overlay:
+## ROS Topics
 
-![SegFormer semantic overlay](proof/segformer/segformer_cityscapes_overlay.jpg)
-
-## Measured Smoke Test
-
-SegFormer was tested by publishing the saved road/cone image as a ROS `sensor_msgs/msg/Image` and reading `/seg_ros/segformer/metadata`.
-
-```text
-model: nvidia/segformer-b0-finetuned-cityscapes-512-1024
-input: proof/source_images/road_cars_cones_input.jpg
-road pixels: 669,873
-sidewalk pixels: 33,905
-top classes: road, fence, car, building, vegetation, person
-CPU inference time: about 963 ms/frame
-```
-
-SegFormer-only dashcam proof run:
-
-```text
-input directory: proof/segformer_raw_dashcam_inputs
-images processed: 3
-output directory: proof/segformer_dashcam
-format: input | SegFormer overlay | road mask | sidewalk mask
-YOLO used: no
-```
-
-Observed behavior from the dashcam proof:
-
-- SegFormer produces a usable Cityscapes `road` mask on multiple car-view frames.
-- It can provide `sidewalk` where the model sees sidewalk-like regions.
-- It sometimes maps unfamiliar objects into Cityscapes labels such as `train`, `rider`, or `bus`.
-- It still does not output lane markings or traffic cones.
-
-For comparison, the current `main` branch live YOLOPv2 + Roboflow smoke test on the same source image reported:
-
-```text
-traffic cones detected: 8
-people detected: 2
-cars detected: 1
-segmentation detections: 2
-CPU inference time: about 630 ms/frame
-```
-
-Interpretation:
-
-- SegFormer gives a useful `road` semantic mask.
-- SegFormer is slower on CPU in this local test.
-- SegFormer does not replace cone detection or lane-line masks.
-- The current YOLOPv2 + Roboflow pipeline is still more complete for the competition task.
-
-## Model Comparison
-
-| Capability | Main branch: YOLOPv2 + Roboflow | This branch: SegFormer Cityscapes |
+| Topic | Type | Purpose |
 |---|---|---|
-| ZED X ROS image input | yes | yes |
-| road/drivable mask | yes, YOLOPv2 drivable mask | yes, Cityscapes `road` class |
-| sidewalk mask | no dedicated output | yes |
-| lane-line mask | yes | no |
-| traffic-cone detection | yes, Roboflow YOLOv8 | no |
-| people/cars/signs | bounding boxes from detector | semantic classes only |
-| output style | masks + object boxes | semantic class masks |
-| CPU smoke-test speed | about 630 ms/frame | about 963 ms/frame |
-| best use | competition prototype now | research / semantic costmap comparison |
+| `/seg_ros/segformer/input_image` | `sensor_msgs/msg/Image` | republished source image |
+| `/seg_ros/segformer/overlay_image` | `sensor_msgs/msg/Image` | semantic overlay |
+| `/seg_ros/segformer/class_mask` | `sensor_msgs/msg/Image` | raw class-id mask |
+| `/seg_ros/segformer/road_mask_raw` | `sensor_msgs/msg/Image` | direct Cityscapes road class |
+| `/seg_ros/segformer/road_mask` | `sensor_msgs/msg/Image` | HSV-refined road mask |
+| `/seg_ros/segformer/sidewalk_mask` | `sensor_msgs/msg/Image` | sidewalk class |
+| `/seg_ros/segformer/lane_hint_mask` | `sensor_msgs/msg/Image` | white/yellow paint cue mask |
+| `/seg_ros/segformer/nav2/bev_keepout_mask` | `sensor_msgs/msg/Image` | projected top-down debug image |
+| `/seg_ros/segformer/nav2/filter_mask` | `nav_msgs/msg/OccupancyGrid` | Nav2 keepout filter mask |
+| `/seg_ros/segformer/nav2/drivable_grid` | `nav_msgs/msg/OccupancyGrid` | local drivable-vs-nondrivable grid |
+| `/seg_ros/segformer/nav2/costmap_filter_info` | `nav2_msgs/msg/CostmapFilterInfo` | Nav2 filter metadata |
+| `/seg_ros/segformer/metadata` | `std_msgs/msg/String` | pixel counts and grid info |
+| `/seg_ros/segformer/timing` | `std_msgs/msg/String` | runtime timing |
 
-## ROS Compatibility
-
-The SegFormer branch remains a ROS 2 Jazzy Python package:
-
-```text
-package: seg_ros_bridge
-build type: ament_python
-image conversion: cv_bridge
-input type: sensor_msgs/msg/Image
-mask outputs: sensor_msgs/msg/Image
-label metadata: vision_msgs/msg/LabelInfo
-debug metadata: std_msgs/msg/String JSON
-```
-
-The branch builds with:
+## Build
 
 ```bash
 cd /home/alexander/Desktop/Competiton_Semantic_Segmentation/ros2_ws
@@ -140,37 +121,33 @@ colcon build --packages-select seg_ros_bridge
 source install/setup.bash
 ```
 
-## Install Optional SegFormer Dependency
-
-SegFormer support uses Hugging Face `transformers`. It is optional so the stable pipeline does not depend on it.
+Install optional SegFormer dependency:
 
 ```bash
 /home/alexander/github/av-perception/.venv/bin/python -m pip install -r requirements-segformer.txt
 ```
 
-The local venv was tested with `transformers` installed.
+## Demo With Your Images
 
-## Run SegFormer On ZED X
-
-Start the ZED ROS 2 wrapper first, then confirm the camera topic:
+This is the fastest way to see the branch working in RViz:
 
 ```bash
-ros2 topic list | grep zed
+source /opt/ros/jazzy/setup.bash
+source /home/alexander/Desktop/Competiton_Semantic_Segmentation/ros2_ws/install/setup.bash
+
+ros2 launch seg_ros_bridge segformer_demo.launch.py \
+  image_dir:=/home/alexander/Desktop/img \
+  fps:=1.0 \
+  use_rviz:=true
 ```
 
-Default topic used by this branch:
+That launch does all of this:
 
-```text
-/zed/zed_node/rgb/color/rect/image
-```
+- publishes your images as a ROS image stream
+- runs SegFormer
+- opens RViz with the branch config
 
-Older fallback topic:
-
-```text
-/zed/zed_node/rgb/image_rect_color
-```
-
-Launch SegFormer:
+## Live ZED X Run
 
 ```bash
 source /opt/ros/jazzy/setup.bash
@@ -178,149 +155,60 @@ source /home/alexander/Desktop/Competiton_Semantic_Segmentation/ros2_ws/install/
 
 ros2 launch seg_ros_bridge segformer.launch.py \
   image_topic:=/zed/zed_node/rgb/color/rect/image \
-  model_id:=nvidia/segformer-b0-finetuned-cityscapes-512-1024 \
   device:=cpu \
-  process_every_n:=1
+  enable_hsv_refinement:=true \
+  nav2_publish_grid:=true \
+  use_rviz:=true
 ```
 
-Generate the SegFormer-only dashcam proof:
+## Nav2 Integration
+
+This branch publishes the exact message pair expected by Nav2 costmap filters:
+
+- `nav_msgs/msg/OccupancyGrid`
+- `nav2_msgs/msg/CostmapFilterInfo`
+
+Example local costmap config:
+
+- [config/nav2_keepout_example.yaml](config/nav2_keepout_example.yaml)
+
+Important boundary:
+
+- the branch currently publishes a **local keepout grid in `base_link`**
+- this is best suited for **local costmap filtering**
+- a full global Nav2 map pipeline is not included here
+
+## Generate Proof Again
 
 ```bash
 /home/alexander/github/av-perception/.venv/bin/python \
-  scripts/generate_segformer_dashcam_proof.py \
-  --input-dir proof/segformer_raw_dashcam_inputs \
-  --output-dir proof/segformer_dashcam \
+  scripts/generate_nav2_segformer_proof.py \
+  --input-dir /home/alexander/Desktop/img \
+  --output-dir proof/segformer_nav2_igvc \
   --device cpu \
   --limit 6
 ```
 
-Run the local SegFormer web UI:
-
-```bash
-/home/alexander/github/av-perception/.venv/bin/python \
-  scripts/segformer_webui.py \
-  --image-dir proof/segformer_raw_dashcam_inputs \
-  --host 127.0.0.1 \
-  --port 7861 \
-  --device cpu
-```
-
-Open:
-
-```text
-http://127.0.0.1:7861
-```
-
-The web UI lets you flip through raw dashcam images and run SegFormer on demand. It shows the unmodified input, semantic overlay, road mask, sidewalk mask, class counts, and timing. It does not use YOLO.
-
-Verify:
-
-```bash
-ros2 topic list | grep '^/seg_ros/segformer'
-ros2 topic echo /seg_ros/segformer/metadata --once
-ros2 topic echo /seg_ros/segformer/timing --once
-```
-
-## SegFormer Topics
-
-| Topic | Type | Payload |
-|---|---|---|
-| `/seg_ros/segformer/input_image` | `sensor_msgs/msg/Image` | `bgr8` source frame |
-| `/seg_ros/segformer/overlay_image` | `sensor_msgs/msg/Image` | semantic overlay |
-| `/seg_ros/segformer/class_mask` | `sensor_msgs/msg/Image` | raw Cityscapes class-id mask |
-| `/seg_ros/segformer/road_mask` | `sensor_msgs/msg/Image` | binary `road` class mask |
-| `/seg_ros/segformer/sidewalk_mask` | `sensor_msgs/msg/Image` | binary `sidewalk` class mask |
-| `/seg_ros/segformer/label_info` | `vision_msgs/msg/LabelInfo` | full model label map |
-| `/seg_ros/segformer/metadata` | `std_msgs/msg/String` | class pixel counts and timing |
-| `/seg_ros/segformer/timing` | `std_msgs/msg/String` | runtime timing |
-
-Example metadata:
-
-```json
-{
-  "model_id": "nvidia/segformer-b0-finetuned-cityscapes-512-1024",
-  "road_pixels": 669873,
-  "sidewalk_pixels": 33905,
-  "class_pixel_counts": {
-    "road": 669873,
-    "car": 303233,
-    "person": 87369
-  },
-  "timing_ms": 963.48
-}
-```
-
-## What Remains From Main
-
-The existing YOLOPv2 + Roboflow nodes are still present so this branch can run side-by-side comparisons:
-
-| Node | Purpose |
-|---|---|
-| `live_perception_node` | current YOLOPv2 road/lane + Roboflow object pipeline |
-| `segformer_node` | SegFormer semantic comparison pipeline |
-| `zed_image_recorder_node` | records ZED X validation frames |
-| `competition_objects_node` | static object proof runner |
-| `seg_demo_node` | static YOLOPv2 road/lane proof runner |
-
-Run the current main-style live pipeline:
-
-```bash
-ros2 launch seg_ros_bridge live_perception.launch.py \
-  image_topic:=/zed/zed_node/rgb/color/rect/image \
-  device:=cpu
-```
-
-Run SegFormer at the same time with frame skipping if CPU is overloaded:
-
-```bash
-ros2 launch seg_ros_bridge segformer.launch.py \
-  image_topic:=/zed/zed_node/rgb/color/rect/image \
-  device:=cpu \
-  process_every_n:=3
-```
-
-## Decision Criteria
-
-Use the same ZED X frames for both branches and compare:
-
-1. road mask quality
-2. sidewalk/non-road rejection
-3. lane-line usefulness
-4. traffic-cone support
-5. CPU/GPU runtime
-6. usefulness for Nav2 costmap work
-
-Do not choose SegFormer only because it is newer. Choose it only if it improves the robot task.
-
 ## Current Opinion
 
-SegFormer is ROS-compatible and useful for experimentation, especially for road/sidewalk semantic masks.
+This branch is a better **Nav2-facing semantic demo** than the older SegFormer branch state because it now produces:
 
-It is not currently better as the default model because:
+- RViz-visible masks
+- repeatable replay from your images
+- planner-facing local occupancy outputs
 
-- no lane-line class
-- no traffic-cone class
-- slower CPU smoke test
-- no ZED X ground-truth IoU yet
+It is still weaker than a full competition stack because it does not yet cover:
 
-Best use for this branch:
+- stop-sign handling
+- pedestrian stop behavior
+- pothole-specific logic
+- object detection fusion
 
-```text
-compare SegFormer road/sidewalk masks against YOLOPv2 drivable masks on real ZED X frames
-```
+## Related Files
 
-Current branch evidence:
-
-```text
-SegFormer-only dashcam proof exists and runs without YOLO.
-It is useful for road/sidewalk semantics.
-It is still incomplete for lane lines and cones.
-```
-
-## Related Docs
-
-- [SegFormer Experiment](docs/segformer_experiment.md)
-- [ZED X Validation Workflow](docs/zed_validation_workflow.md)
-- [Technical Architecture](docs/technical_architecture.md)
-- [Dataset and Training Notes](docs/datasets_and_training.md)
-- [Model Weights](models/README.md)
+- [segformer node](ros2_ws/src/seg_ros_bridge/seg_ros_bridge/segformer_node.py)
+- [image replay node](ros2_ws/src/seg_ros_bridge/seg_ros_bridge/image_replay_node.py)
+- [SegFormer launch](ros2_ws/src/seg_ros_bridge/launch/segformer.launch.py)
+- [demo launch](ros2_ws/src/seg_ros_bridge/launch/segformer_demo.launch.py)
+- [RViz config](ros2_ws/src/seg_ros_bridge/rviz/segformer.rviz)
+- [proof generator](scripts/generate_nav2_segformer_proof.py)
